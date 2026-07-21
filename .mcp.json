@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "kis-code-assistant-mcp": {
+       "command": "npx",
+        "args": ["-y", "@koreainvestment/kis-code-assistant-mcp"]
+    }
+  }
+}

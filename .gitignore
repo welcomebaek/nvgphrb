@@ -1,0 +1,27 @@
+# --- 시크릿 (절대 커밋 금지) ---
+.env
+.kis_token_cache.json
+.kis_paper_token_cache.json
+.kis_ws_approval_cache.json
+
+# --- 파이썬 / uv ---
+.venv/
+__pycache__/
+*.pyc
+
+# --- Claude Code 로컬 상태 ---
+.claude/
+
+# --- 런타임 데이터 / 로그 / 상태 (기기별, 재생성됨) ---
+data/
+state/
+logs/
+order_log.jsonl
+order_log_real.jsonl
+cron_stdout.log
+launchd_stdout.log
+launchd_stderr.log
+
+# --- 매일 재생성되는 산출물 (유니버스 선정/리프레셔 출력) ---
+etf_watchlist.json
+etf_candidates_ranked.json
