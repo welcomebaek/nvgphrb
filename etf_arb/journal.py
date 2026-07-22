@@ -18,8 +18,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_JOURNAL_PATH = PROJECT_ROOT / "logs" / "etf_arb_journal.jsonl"
+from etf_arb import paths
+
+DEFAULT_JOURNAL_PATH = paths.JOURNAL_PATH
 
 _registered_secrets: list[str] = []
 

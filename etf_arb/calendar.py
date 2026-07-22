@@ -18,17 +18,16 @@ import json
 import os
 import tempfile
 from datetime import date, datetime, timedelta
-from pathlib import Path
 
 import httpx
 
+from etf_arb import paths
 from kis_common import KisApiError, REQUEST_TIMEOUT_SECONDS, sanitize
 
 HOLIDAY_URL_PATH = "/uapi/domestic-stock/v1/quotations/chk-holiday"
 TR_ID_CHK_HOLIDAY = "CTCA0903R"
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-CACHE_PATH = PROJECT_ROOT / "data" / "holiday_cache.json"
+CACHE_PATH = paths.HOLIDAY_CACHE_PATH
 
 # 캐시가 오늘 이후 최소 이만큼의 달력을 커버해야 API 호출을 생략한다.
 MIN_COVER_DAYS = 30

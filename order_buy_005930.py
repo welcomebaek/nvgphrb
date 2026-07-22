@@ -64,16 +64,15 @@ import json
 import sys
 import time
 from datetime import datetime
-from pathlib import Path
 from typing import Any
 
 import httpx
 
+from etf_arb import paths
 from kis_common import KisApiError, REQUEST_TIMEOUT_SECONDS, get_access_token, load_credentials, sanitize
 
-SCRIPT_DIR = Path(__file__).resolve().parent
-PAPER_TOKEN_CACHE_PATH = SCRIPT_DIR / ".kis_paper_token_cache.json"
-ORDER_LOG_PATH = SCRIPT_DIR / "order_log.jsonl"
+PAPER_TOKEN_CACHE_PATH = paths.PAPER_TOKEN_CACHE_PATH
+ORDER_LOG_PATH = paths.ORDER_LOG_PAPER_PATH
 
 REQUIRED_PAPER_ENV_VARS = [
     "KIS_PAPER_APP_KEY",
@@ -173,6 +172,7 @@ def extract_order_number(payload: dict[str, Any]) -> str | None:
 
 def append_log(record: dict[str, Any]) -> None:
     line = json.dumps(record, ensure_ascii=False)
+    ORDER_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(ORDER_LOG_PATH, "a", encoding="utf-8") as f:
         f.write(line + "\n")
 

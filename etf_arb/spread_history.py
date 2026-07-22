@@ -20,10 +20,9 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from etf_arb import universe
+from etf_arb import paths, universe
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-JOURNAL_PATH = PROJECT_ROOT / "logs" / "intraday_samples.jsonl"
+JOURNAL_PATH = paths.INTRADAY_SAMPLES_PATH
 
 
 def load_daily_spread_medians(

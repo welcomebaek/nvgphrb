@@ -36,19 +36,18 @@ from __future__ import annotations
 import json
 import sys
 from datetime import datetime
-from pathlib import Path
 from typing import Any
 
 import httpx
 
+from etf_arb import paths
 from kis_common import KisApiError, REQUEST_TIMEOUT_SECONDS, get_access_token, load_credentials, sanitize
 
 FOREIGN_MARGIN_URL_PATH = "/uapi/overseas-stock/v1/trading/foreign-margin"
 TR_ID_FOREIGN_MARGIN = "TTTC2101R"
 ACNT_PRDT_CD = "01"  # fixed product code, per project convention (see order_buy_005930_real.py)
 
-SCRIPT_DIR = Path(__file__).resolve().parent
-TOKEN_CACHE_PATH = SCRIPT_DIR / ".kis_token_cache.json"
+TOKEN_CACHE_PATH = paths.TOKEN_CACHE_PATH
 
 
 def get_foreign_margin(

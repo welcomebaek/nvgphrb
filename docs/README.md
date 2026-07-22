@@ -100,18 +100,25 @@ ETF는 두 가지 가격을 가집니다.
 | `ws_client.py` | KIS 웹소켓(NAV `H0STNAV0` + 10단계 호가 `H0STASP0`) 클라이언트, 접속키/재접속 |
 | `market_state.py` | 종목별 실시간 스냅샷 + 호가 사다리 (순수) |
 | `signals.py` | 시그널 엔진(진입/청산/강제청산, 깊이비례 사이징, 실효괴리 더블체크) — 순수, I/O 없음 |
-| `portfolio.py` | 가상 포트폴리오 영속화 (state/portfolio_sim.json, 원자적 저장) |
+| `paths.py` | **런타임 데이터 경로 단일 소스** — 로그/상태/캐시/생성물을 소스 트리 밖 `DATA_ROOT`로 분리(디렉토리 꼬임 사고 방지) |
+| `portfolio.py` | 가상 포트폴리오 영속화 (`$DATA_ROOT/state/portfolio_sim.json`, 원자적 저장) |
 | `executor.py` / `executor_sim.py` | 실행기 인터페이스 + 시뮬 체결(호가 사다리 VWAP) |
 | `journal.py` | JSONL 이벤트 저널 |
 | `runner.py` | 오케스트레이터 (기동 시퀀스, asyncio 루프, 종료) |
 
-### 설정/생성 파일
+### 설정/데이터 파일
 
-| 파일 | 설명 |
-|---|---|
-| `etf_arb_config.json` | 모든 임계값/한도/모드 (전 필드 설명은 [trading.md](trading.md) config 표) |
-| `etf_watchlist.json` | 리프레셔가 매일 생성하는 감시 20종목 (gitignore) |
-| `etf_candidates_ranked.json` | 상위 100종목 후보 풀, 샘플러가 소비 (gitignore) |
-| `data/` `state/` `logs/` | 런타임 캐시/상태/로그 (gitignore) |
+**설정(`etf_arb_config.json`)과 `.env`만 소스 트리에 있고, 나머지 런타임 데이터는 소스 밖
+`DATA_ROOT`(기본 `~/kis_arb_data/`, 환경변수 `KIS_ARB_DATA_DIR`로 재정의)에 쌓입니다.**
+소스 폴더를 옮겨도 데이터가 꼬이지 않도록 경로를 소스와 독립적으로 해석합니다(과거 디렉토리
+중첩 사고 재발 방지). 상세는 [operations.md](operations.md)의 "로그 & 상태 파일" 참조.
+
+| 파일 | 위치 | 설명 |
+|---|---|---|
+| `etf_arb_config.json` | **소스 트리** | 모든 임계값/한도/모드 (전 필드 설명은 [trading.md](trading.md) config 표) |
+| `.env` | **소스 트리** | KIS/KRX 자격증명 (gitignore) |
+| `etf_watchlist.json` | `$DATA_ROOT/` | 리프레셔가 매일 생성하는 감시 20종목 |
+| `etf_candidates_ranked.json` | `$DATA_ROOT/` | 상위 100종목 후보 풀, 샘플러가 소비 |
+| `data/` `state/` `logs/` `cache/` | `$DATA_ROOT/` | 런타임 캐시/상태/로그/토큰캐시 |
 
 전체 실행 절차와 요구사항은 최상위 [../README.md](../README.md)를 참고하세요.

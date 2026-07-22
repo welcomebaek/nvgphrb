@@ -22,11 +22,11 @@ from __future__ import annotations
 import json
 import sys
 from datetime import datetime
-from pathlib import Path
 from typing import Any
 
 import httpx
 
+from etf_arb import paths
 from kis_common import KisApiError, REQUEST_TIMEOUT_SECONDS, get_access_token, load_credentials, sanitize
 
 STOCK_CODE = "005930"
@@ -34,8 +34,7 @@ MARKET_DIV_CODE = "J"  # KRX
 PRICE_URL_PATH = "/uapi/domestic-stock/v1/quotations/inquire-price"
 TR_ID_INQUIRE_PRICE = "FHKST01010100"
 
-SCRIPT_DIR = Path(__file__).resolve().parent
-TOKEN_CACHE_PATH = SCRIPT_DIR / ".kis_token_cache.json"
+TOKEN_CACHE_PATH = paths.TOKEN_CACHE_PATH
 
 
 def get_current_price(

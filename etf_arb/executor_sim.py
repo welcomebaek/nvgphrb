@@ -32,12 +32,12 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Callable
 
+from etf_arb import paths
 from etf_arb.executor import Fill
 from etf_arb.market_state import TickerState
 from etf_arb.portfolio import Portfolio
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_TRADES_PATH = PROJECT_ROOT / "logs" / "etf_arb_trades_sim.jsonl"
+DEFAULT_TRADES_PATH = paths.TRADES_PATH
 
 
 class SimExecutor:

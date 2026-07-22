@@ -39,16 +39,31 @@ uv run etf_intraday_sampler.py        # 샘플러(장중에만)
 uv run etf_arb_report.py              # 손익/통계 리포트
 ```
 
-## 로그 & 상태 파일 (`logs/`, `state/` — gitignore)
+## 로그 & 상태 파일 (`$DATA_ROOT` — 소스 트리 밖, gitignore 무관)
 
-| 파일 | 내용 |
+**런타임 데이터는 소스 디렉토리와 분리된 고정 위치 `DATA_ROOT`에 쌓입니다.**
+소스 폴더를 옮기거나 이름을 바꿔도 데이터가 꼬이지 않도록(과거 디렉토리 중첩 사고 재발 방지)
+경로를 소스와 독립적으로 해석합니다.
+
+- 기본값: `~/kis_arb_data/`
+- 재정의: OS 환경변수 **`KIS_ARB_DATA_DIR`** (예: launchd plist의 `EnvironmentVariables`
+  또는 셸 export). `.env`가 아니라 OS/launchd 환경변수임에 주의 — `etf_arb/paths.py`가
+  `os.environ`에서 직접 읽습니다.
+- 반대로 **설정(`etf_arb_config.json`)과 `.env`는 소스와 함께** 유지됩니다(버전관리/관례).
+
+| 파일 (DATA_ROOT 기준) | 내용 |
 |---|---|
 | `logs/etf_arb_journal.jsonl` | 러너 이벤트 저널(아래 이벤트 타입) |
 | `logs/etf_arb_trades_sim.jsonl` | 가상 체결 내역(ts/side/qty/price/수수료/괴리/VWAP) |
 | `logs/intraday_samples.jsonl` | 샘플러 수집(괴리율/스프레드) |
-| `logs/etf_*_launchd_stdout.log` / `stderr.log` | 각 launchd 잡의 콘솔 출력 |
+| `logs/order_log.jsonl`, `logs/order_log_real.jsonl` | 단발 주문 스크립트 로그(모의/실전) |
 | `state/portfolio_sim.json` | 가상 포트폴리오(현금/보유/실현손익/진입카운트/쿨다운) |
 | `data/krx_daily/*.json`, `data/holiday_cache.json` | KRX 일별/휴장일 캐시 |
+| `cache/.kis_token_cache.json` 등 | KIS 토큰/웹소켓 승인키 캐시 |
+| `etf_watchlist.json`, `etf_candidates_ranked.json` | 매일 재생성되는 워치리스트/후보 산출물 |
+
+> launchd 잡의 콘솔 출력(`etf_*_launchd_stdout.log`/`stderr.log`)은 plist의 `StandardOutPath`가
+> 정하므로 여전히 소스 트리의 `logs/` 아래에 남을 수 있습니다(트레이딩 데이터와 무관).
 
 ### 주요 저널 이벤트 타입
 
@@ -60,10 +75,11 @@ uv run etf_arb_report.py              # 손익/통계 리포트
 
 - **손익/통계**: `uv run etf_arb_report.py` — 왕복 손익, 승률, 평균 보유기간, 강제청산 수,
   스킵사유 히스토그램(전략 튜닝의 핵심 도구).
-- **오늘 진입/청산 빠른 확인**:
+- **오늘 진입/청산 빠른 확인** (`DATA_ROOT` 기본값 `~/kis_arb_data`):
   ```bash
-  grep -E '"entry_signal"|"exit_signal"' logs/etf_arb_journal.jsonl | grep $(date +%Y-%m-%d)
-  cat state/portfolio_sim.json
+  D="${KIS_ARB_DATA_DIR:-$HOME/kis_arb_data}"
+  grep -E '"entry_signal"|"exit_signal"' "$D"/logs/etf_arb_journal.jsonl | grep $(date +%Y-%m-%d)
+  cat "$D"/state/portfolio_sim.json
   ```
 - **주요 스킵 사유**: `disparity_above_threshold`(그냥 임계값 미달, 정상), `before_entry_window`,
   `not_regular_session`(동시호가 차단), `quote_stale`/`nav_stale`(신선도), `cooldown`,
@@ -71,8 +87,8 @@ uv run etf_arb_report.py              # 손익/통계 리포트
 
 ## 복구 / 재시작
 
-- 러너는 **하루 1프로세스**(마감 후 종료). 연속성은 전부 `state/portfolio_sim.json`에 원자적
-  저장 — 장중 kill/재시작해도 포지션/기한 보존(체결마다 즉시 저장).
+- 러너는 **하루 1프로세스**(마감 후 종료). 연속성은 전부 `$DATA_ROOT/state/portfolio_sim.json`에
+  원자적 저장 — 장중 kill/재시작해도 포지션/기한 보존(체결마다 즉시 저장).
 - SIGINT/SIGTERM 시 상태 저장 후 정상 종료.
 - 웹소켓 끊김은 자동 재접속+재구독(수동 개입 불필요).
 

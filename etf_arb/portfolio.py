@@ -30,10 +30,11 @@ from dataclasses import replace
 from datetime import date, datetime
 from pathlib import Path
 
+from etf_arb import paths
 from etf_arb.signals import PortfolioView, Position
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_STATE_PATH = PROJECT_ROOT / "state" / "portfolio_sim.json"
+# 외부 임포터(etf_watchlist_refresh, etf_arb_report 등)가 참조하는 공개 별칭.
+DEFAULT_STATE_PATH = paths.PORTFOLIO_PATH
 
 
 class PortfolioError(Exception):

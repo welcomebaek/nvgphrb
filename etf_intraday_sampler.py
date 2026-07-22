@@ -34,14 +34,13 @@ import signal
 import sys
 import time
 from datetime import date, datetime, time as dtime
-from pathlib import Path
 
 import httpx
 
 from etf_arb.calendar import TradingCalendar
 from etf_arb.config import load_config
 from etf_arb.krx_history import ensure_history
-from etf_arb import universe
+from etf_arb import paths, universe
 from kis_common import (
     KisApiError,
     REQUEST_TIMEOUT_SECONDS,
@@ -49,7 +48,8 @@ from kis_common import (
     load_credentials,
     sanitize,
 )
-from kis_price import TOKEN_CACHE_PATH
+
+TOKEN_CACHE_PATH = paths.TOKEN_CACHE_PATH
 
 ETF_PRICE_URL_PATH = "/uapi/etfetn/v1/quotations/inquire-price"
 TR_ID_ETF_PRICE = "FHPST02400000"
@@ -65,8 +65,7 @@ PER_REQUEST_GAP_SECONDS = 0.1
 MARKET_OPEN = dtime(9, 0)
 MARKET_CLOSE = dtime(15, 30)
 
-PROJECT_ROOT = Path(__file__).resolve().parent
-JOURNAL_PATH = PROJECT_ROOT / "logs" / "intraday_samples.jsonl"
+JOURNAL_PATH = paths.INTRADAY_SAMPLES_PATH
 
 _shutdown = False
 
@@ -114,7 +113,7 @@ def build_sample_pool(cfg) -> list[dict]:
     독립 실행성 유지가 목적: 워치리스트 리프레셔가 아직 안 돌았거나 실패해도
     샘플러 단독으로 계속 동작해야 한다.
     """
-    ranked_path = PROJECT_ROOT / "etf_candidates_ranked.json"
+    ranked_path = paths.CANDIDATES_PATH
     if ranked_path.exists():
         try:
             raw = json.loads(ranked_path.read_text(encoding="utf-8"))

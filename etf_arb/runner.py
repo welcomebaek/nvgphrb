@@ -30,7 +30,7 @@ from typing import Any, Callable
 
 from kis_common import KisApiError, get_access_token, load_credentials
 
-from etf_arb import journal
+from etf_arb import journal, paths
 from etf_arb.calendar import CalendarError, TradingCalendar
 from etf_arb.config import Config, ConfigError, load_config
 from etf_arb.executor_sim import SimExecutor
@@ -45,9 +45,8 @@ from etf_arb.signals import (
 )
 from etf_arb.ws_client import KisWsClient, get_approval_key
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-WATCHLIST_PATH = PROJECT_ROOT / "etf_watchlist.json"
-TOKEN_CACHE_PATH = PROJECT_ROOT / ".kis_token_cache.json"
+WATCHLIST_PATH = paths.WATCHLIST_PATH
+TOKEN_CACHE_PATH = paths.TOKEN_CACHE_PATH
 
 MARKET_CLOSE = dtime(15, 30, 30)  # 장 마감(15:30) + 30초 유예
 DEFAULT_SUMMARY_INTERVAL_SECONDS = 10.0

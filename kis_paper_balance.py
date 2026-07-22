@@ -35,19 +35,18 @@ from __future__ import annotations
 import json
 import sys
 from datetime import datetime
-from pathlib import Path
 from typing import Any
 
 import httpx
 
+from etf_arb import paths
 from kis_common import KisApiError, REQUEST_TIMEOUT_SECONDS, get_access_token, load_credentials, sanitize
 
 BALANCE_URL_PATH = "/uapi/domestic-stock/v1/trading/inquire-balance"
 TR_ID_BALANCE_DEMO = "VTTC8434R"
 ACNT_PRDT_CD = "01"  # fixed product code, per project convention
 
-SCRIPT_DIR = Path(__file__).resolve().parent
-TOKEN_CACHE_PATH = SCRIPT_DIR / ".kis_paper_token_cache.json"
+TOKEN_CACHE_PATH = paths.PAPER_TOKEN_CACHE_PATH
 
 
 def get_paper_balance(

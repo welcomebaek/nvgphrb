@@ -43,6 +43,7 @@ from typing import Any, AsyncIterator, Callable
 import httpx
 import websockets
 
+from etf_arb import paths
 from kis_common import KisApiError, REQUEST_TIMEOUT_SECONDS, sanitize
 
 APPROVAL_URL_PATH = "/oauth2/Approval"
@@ -76,8 +77,7 @@ BACKOFF_INITIAL_SECONDS = 1.0
 BACKOFF_MAX_SECONDS = 60.0
 HEALTHY_CONNECTION_SECONDS = 30.0  # connection older than this resets backoff
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_APPROVAL_CACHE_PATH = PROJECT_ROOT / ".kis_ws_approval_cache.json"
+DEFAULT_APPROVAL_CACHE_PATH = paths.WS_APPROVAL_CACHE_PATH
 
 
 # ---------------------------------------------------------------- approval key
@@ -104,6 +104,8 @@ def _read_approval_cache(cache_path: Path) -> str | None:
 def _write_approval_cache(cache_path: Path, approval_key: str) -> None:
     data = {"approval_key": approval_key, "issued_at": time.time()}
     try:
+        # 캐시 디렉토리(DATA_ROOT/cache)가 신규 기기에 아직 없을 수 있으므로 보장한다.
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
         fd = os.open(cache_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(data, f)

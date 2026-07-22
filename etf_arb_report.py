@@ -19,10 +19,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterator
 
-PROJECT_ROOT = Path(__file__).resolve().parent
-DEFAULT_TRADES_PATH = PROJECT_ROOT / "logs" / "etf_arb_trades_sim.jsonl"
-DEFAULT_JOURNAL_PATH = PROJECT_ROOT / "logs" / "etf_arb_journal.jsonl"
-DEFAULT_STATE_PATH = PROJECT_ROOT / "state" / "portfolio_sim.json"
+from etf_arb import paths
+
+DEFAULT_TRADES_PATH = paths.TRADES_PATH
+DEFAULT_JOURNAL_PATH = paths.JOURNAL_PATH
+DEFAULT_STATE_PATH = paths.PORTFOLIO_PATH
 
 
 def iter_jsonl(path: Path) -> Iterator[dict[str, Any]]:

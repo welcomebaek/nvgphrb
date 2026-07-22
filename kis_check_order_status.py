@@ -90,12 +90,12 @@ from __future__ import annotations
 import json
 import sys
 from datetime import datetime
-from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
 import httpx
 
+from etf_arb import paths
 from kis_common import KisApiError, REQUEST_TIMEOUT_SECONDS, get_access_token, load_credentials, sanitize
 
 DEFAULT_ORDER_NUMBER = "0004538200"
@@ -111,8 +111,7 @@ EXCG_ID_DVSN_CD = "ALL"  # NOT the source's documented default ("KRX") - see
 
 KST = ZoneInfo("Asia/Seoul")
 
-SCRIPT_DIR = Path(__file__).resolve().parent
-TOKEN_CACHE_PATH = SCRIPT_DIR / ".kis_token_cache.json"
+TOKEN_CACHE_PATH = paths.TOKEN_CACHE_PATH
 
 
 def get_daily_ccld(

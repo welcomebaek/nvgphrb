@@ -98,6 +98,8 @@ def write_token_cache(cache_path: Path, access_token: str, expires_in: int) -> N
         "expires_in": expires_in,
     }
     try:
+        # 캐시 디렉토리(DATA_ROOT/cache)가 신규 기기에 아직 없을 수 있으므로 보장한다.
+        Path(cache_path).parent.mkdir(parents=True, exist_ok=True)
         fd = os.open(cache_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(data, f)

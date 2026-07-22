@@ -23,10 +23,10 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
+from etf_arb import paths
 from krx_etf_list import KrxApiError, fetch_etf_list, load_krx_auth_key
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-CACHE_DIR = PROJECT_ROOT / "data" / "krx_daily"
+CACHE_DIR = paths.KRX_CACHE_DIR
 
 FETCH_SLEEP_SECONDS = 0.35  # KRX 호출 간 대기 (예의상 스로틀)
 PROGRESS_EVERY_FETCHES = 10

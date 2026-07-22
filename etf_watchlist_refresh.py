@@ -34,6 +34,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
+from etf_arb import paths
 from etf_arb.calendar import CalendarError, TradingCalendar
 from etf_arb.config import ConfigError, load_config
 from etf_arb.intraday_history import load_intraday_sessions
@@ -58,10 +59,9 @@ from kis_common import (
 )
 from krx_etf_list import KrxApiError
 
-SCRIPT_DIR = Path(__file__).resolve().parent
-TOKEN_CACHE_PATH = SCRIPT_DIR / ".kis_token_cache.json"
-WATCHLIST_PATH = SCRIPT_DIR / "etf_watchlist.json"
-CANDIDATES_PATH = SCRIPT_DIR / "etf_candidates_ranked.json"
+TOKEN_CACHE_PATH = paths.TOKEN_CACHE_PATH
+WATCHLIST_PATH = paths.WATCHLIST_PATH
+CANDIDATES_PATH = paths.CANDIDATES_PATH
 
 
 def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:

@@ -27,7 +27,6 @@ import json
 import sys
 import time
 from datetime import date, datetime, timedelta
-from pathlib import Path
 from typing import Any
 
 import httpx
@@ -35,7 +34,7 @@ import httpx
 from etf_arb.calendar import CalendarError, TradingCalendar
 from etf_arb.config import ConfigError, load_config
 from etf_arb.krx_history import ensure_history
-from etf_arb import universe
+from etf_arb import paths, universe
 from kis_common import (
     KisApiError,
     REQUEST_TIMEOUT_SECONDS,
@@ -45,9 +44,8 @@ from kis_common import (
 )
 from krx_etf_list import KrxApiError
 
-SCRIPT_DIR = Path(__file__).resolve().parent
-TOKEN_CACHE_PATH = SCRIPT_DIR / ".kis_token_cache.json"
-WATCHLIST_PATH = SCRIPT_DIR / "etf_watchlist.json"
+TOKEN_CACHE_PATH = paths.TOKEN_CACHE_PATH
+WATCHLIST_PATH = paths.WATCHLIST_PATH
 
 NAV_DAILY_URL_PATH = "/uapi/etfetn/v1/quotations/nav-comparison-daily-trend"
 TR_ID_NAV_DAILY = "FHPST02440200"
@@ -360,6 +358,7 @@ def main() -> int:
                 "score": cand["score"],
             }
         )
+    WATCHLIST_PATH.parent.mkdir(parents=True, exist_ok=True)
     WATCHLIST_PATH.write_text(
         json.dumps(out, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
