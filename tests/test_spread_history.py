@@ -205,3 +205,22 @@ def test_keep_none_ma():
 def test_boundary_equal_threshold_is_kept():
     # strictly greater excludes; exactly at threshold is kept
     assert exclude_for_spread(0.15, n_days=5, min_days=2, max_spread=0.15) is False
+
+
+def test_window_excludes_auction_spread_samples(tmp_path: Path):
+    """시간창 필터: 진입 창 밖(개장 허수/마감 동시호가) 스프레드 샘플 배제."""
+    p = tmp_path / "sw.jsonl"
+    _write_jsonl(p, [
+        {"ts": "2026-07-22T09:01:00", "code": "AAA", "spread_pct": "5.0"},   # 개장 허수(넓음)
+        {"ts": "2026-07-22T09:05:00", "code": "AAA", "spread_pct": "0.05"},  # 창 안
+        {"ts": "2026-07-22T12:00:00", "code": "AAA", "spread_pct": "0.07"},  # 창 안
+        {"ts": "2026-07-22T15:25:00", "code": "AAA", "spread_pct": "9.0"},   # 마감 동시호가
+    ])
+    # 필터 없으면 중앙값이 개장/마감 허수에 오염됨
+    no_win = load_daily_spread_medians(path=p, lookback_days=5, today=TODAY)
+    # 창 적용: 0.05, 0.07 만 -> 중앙값 0.06
+    win = load_daily_spread_medians(
+        path=p, lookback_days=5, today=TODAY, window=("09:05", "15:00")
+    )
+    assert abs(win["AAA"][0][1] - 0.06) < 1e-9
+    assert no_win["AAA"][0][1] != win["AAA"][0][1]  # 필터가 실제로 다르게 만듦
