@@ -11,7 +11,9 @@
     "intraday_min_samples": 60,
     "intraday_weight": 0.4,
     "intraday_lookback_days": 10,
-    "intraday_deadline_minutes": 60.0
+    "intraday_deadline_minutes": 60.0,
+    "spread_lookback_days": 5,
+    "spread_min_days": 2
   },
   "signals": {
     "entry_threshold_pct": 0.5,

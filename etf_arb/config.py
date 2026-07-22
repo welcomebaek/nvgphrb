@@ -34,6 +34,11 @@ class UniverseConfig:
     intraday_weight: float
     intraday_lookback_days: int
     intraday_deadline_minutes: float
+    # N일 이동평균 스프레드 필터 (장전 리프레셔용): 샘플러가 축적한 종목별
+    # 일중 스프레드의 일별 중앙값을 최근 spread_lookback_days일 평균 내어,
+    # max_spread_pct를 초과하는 구조적 고스프레드 종목을 워치리스트에서 제외.
+    spread_lookback_days: int = 5
+    spread_min_days: int = 2
 
 
 @dataclass(frozen=True)
@@ -129,6 +134,8 @@ def load_config(path: Path | None = None) -> Config:
                 intraday_weight=float(u["intraday_weight"]),
                 intraday_lookback_days=int(u["intraday_lookback_days"]),
                 intraday_deadline_minutes=float(u["intraday_deadline_minutes"]),
+                spread_lookback_days=int(u.get("spread_lookback_days", 5)),
+                spread_min_days=int(u.get("spread_min_days", 2)),
             ),
             signals=SignalsConfig(
                 entry_threshold_pct=float(s["entry_threshold_pct"]),
@@ -206,6 +213,13 @@ def _validate(cfg: Config) -> None:
         raise ConfigError("intraday_lookback_days는 1 이상이어야 합니다")
     if u.intraday_deadline_minutes <= 0:
         raise ConfigError("intraday_deadline_minutes는 0보다 커야 합니다")
+    if u.spread_lookback_days < 1:
+        raise ConfigError("spread_lookback_days는 1 이상이어야 합니다")
+    if not (1 <= u.spread_min_days <= u.spread_lookback_days):
+        raise ConfigError(
+            "spread_min_days는 1 이상 spread_lookback_days 이하여야 합니다 "
+            f"({u.spread_min_days}, spread_lookback_days={u.spread_lookback_days})"
+        )
 
     if r.alloc_per_position_krw * r.max_positions > r.virtual_capital_krw * 1.05:
         raise ConfigError(
