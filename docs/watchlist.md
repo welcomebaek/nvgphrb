@@ -37,6 +37,12 @@
   - `FHKST01010200`(호가) → askp1/bidp1 → **spread_pct**
 - `logs/intraday_samples.jsonl`에 `{ts, code, prpr, nav, dprt, askp1, bidp1, spread_pct}` 축적.
 - 넓은 후보군을 낮은 해상도로 관측 → 워치리스트 밖 종목의 기회/스프레드도 파악.
+- **수집 창 = 진입 시그널 창**(`signals.no_entry_before`~`no_entry_after`, 기본 09:05~15:00).
+  동시호가 시간대(장전, 마감 15:20~)는 NAV/호가가 미동기라 괴리율이 왜곡되므로(개장 직후
+  -10%대 허수 관측됨) 아예 수집하지 않는다. 별도 config 없이 진입 창을 재사용 → 진입 창을
+  바꾸면 수집 창도 자동으로 따라간다.
+- **읽기 계층에도 동일 창 필터**: `intraday_history`/`spread_history` 로더가 통계 계산 시 같은
+  창 밖 샘플을 제외한다. 그래서 과거에 (창 도입 전) 쌓인 허수 샘플도 통계에 영향을 주지 않는다.
 
 ### 웹소켓 저널 (`etf_arb_run.py`)
 

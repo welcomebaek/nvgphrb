@@ -333,8 +333,11 @@ def main() -> int:
     )
 
     # 5) 장중 에피소드 통계 (저널에서 세션 로드 -> 후보와 매칭되는 것만)
+    # 진입 시그널 창(no_entry_before~after)과 동일 시간창만 반영해 동시호가
+    # 시간대 허수(개장 직후 NAV 미동기 등)를 통계에서 배제한다.
+    sample_window = (cfg.signals.no_entry_before, cfg.signals.no_entry_after)
     intraday_sessions = load_intraday_sessions(
-        lookback_days=ucfg.intraday_lookback_days, today=today
+        lookback_days=ucfg.intraday_lookback_days, today=today, window=sample_window
     )
     n_matched = 0
     for cand in ranked:
@@ -362,7 +365,7 @@ def main() -> int:
     # 08:15 장전엔 실시간 호가를 못 보므로, 샘플러가 며칠간 축적한 일별 스프레드
     # 중앙값의 spread_lookback_days일 평균으로 구조적 고스프레드 종목을 걸러낸다.
     spread_medians = load_daily_spread_medians(
-        lookback_days=ucfg.spread_lookback_days, today=today
+        lookback_days=ucfg.spread_lookback_days, today=today, window=sample_window
     )
 
     def _spread_ma_for(code: str) -> tuple[float | None, int]:

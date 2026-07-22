@@ -11,7 +11,7 @@ I/O 실패(손상/잘림)에 관대하다: 킬된 샘플러 프로세스가 파�
 from __future__ import annotations
 
 import json
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time as dtime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -20,16 +20,26 @@ from etf_arb import paths, universe
 JOURNAL_PATH = paths.INTRADAY_SAMPLES_PATH
 
 
+def _hhmm(value: str) -> dtime:
+    h, m = value.split(":")
+    return dtime(int(h), int(m))
+
+
 def load_intraday_sessions(
     path: Path = JOURNAL_PATH,
     lookback_days: int = 10,
     today: date | None = None,
+    window: tuple[str, str] | None = None,
 ) -> dict[str, list[tuple[list[float], list[float]]]]:
     """저널을 파싱해 {code: [(timestamps_epoch, disparity_pct), ...]}로 묶는다.
 
     반환값의 리스트 원소 하나가 세션(=캘린더 날짜) 하나. 각 세션 내부는
     ts 오름차순으로 정렬돼 있다. lookback_days는 오늘을 포함해 최근 며칠의
     ts만 반영한다 (오늘 - (lookback_days-1) 이상). 파일이 없으면 빈 dict.
+
+    window=("HH:MM","HH:MM")를 주면 그 시각 창 [start, end) 안의 샘플만
+    반영한다(진입 시그널 창과 일치시켜 동시호가 시간대 허수를 배제하는 용도).
+    None이면 시각 필터 없음(하위호환).
 
     다음 줄은 조용히 건너뛴다: JSON 파싱 실패, ts/code 누락 또는 형식 오류,
     dprt가 universe.parse_number로 파싱되지 않는 값 - 킬된 샘플러가 남긴
@@ -41,6 +51,7 @@ def load_intraday_sessions(
 
     today = today or date.today()
     cutoff = today - timedelta(days=lookback_days - 1)
+    win = (_hhmm(window[0]), _hhmm(window[1])) if window is not None else None
 
     # code -> {날짜문자열: [(epoch, disparity_pct), ...]}
     by_code_day: dict[str, dict[str, list[tuple[float, float]]]] = {}
@@ -68,6 +79,8 @@ def load_intraday_sessions(
 
             ts_date = ts_dt.date()
             if not (cutoff <= ts_date <= today):
+                continue
+            if win is not None and not (win[0] <= ts_dt.time() < win[1]):
                 continue
 
             dprt = universe.parse_number(row.get("dprt"))

@@ -67,6 +67,11 @@ MARKET_CLOSE = dtime(15, 30)
 
 JOURNAL_PATH = paths.INTRADAY_SAMPLES_PATH
 
+
+def _hhmm(value: str) -> dtime:
+    h, m = value.split(":")
+    return dtime(int(h), int(m))
+
 _shutdown = False
 
 
@@ -243,15 +248,22 @@ def main() -> int:
         print(f"{today}는 휴장일입니다. 샘플러를 실행하지 않습니다.")
         return 0
 
+    # 수집 창을 전략의 진입 시그널 창(signals.no_entry_before ~ no_entry_after,
+    # 기본 09:05~15:00)과 일치시킨다. 동시호가 시간대(장전, 마감 15:20~)의
+    # NAV/호가 미동기 허수를 원천 배제하고, 통계가 실제 진입 가능한 구간만
+    # 반영하도록. 별도 config 없이 재사용 → 진입 창을 바꾸면 수집 창도 따라감.
+    sample_start = _hhmm(cfg.signals.no_entry_before)
+    sample_end = _hhmm(cfg.signals.no_entry_after)
+
     now = datetime.now()
-    if now.time() >= MARKET_CLOSE:
-        print(f"장 마감({MARKET_CLOSE}) 이후입니다. 다음 거래일에 실행하세요.")
+    if now.time() >= sample_end:
+        print(f"수집 창 종료({sample_end}) 이후입니다. 다음 거래일에 실행하세요.")
         return 0
-    if now.time() < MARKET_OPEN:
+    if now.time() < sample_start:
         wait_s = (
-            datetime.combine(today, MARKET_OPEN) - now
+            datetime.combine(today, sample_start) - now
         ).total_seconds()
-        print(f"개장 전입니다. {int(wait_s)}초 후 개장 시각까지 대기합니다.")
+        print(f"수집 창 시작 전입니다. {int(wait_s)}초 후 {sample_start}까지 대기합니다.")
         time.sleep(max(0.0, wait_s))
 
     pool = build_sample_pool(cfg)
@@ -260,12 +272,12 @@ def main() -> int:
 
     print(
         f"장중 샘플링 시작: {len(codes)}종목, {SWEEP_INTERVAL_SECONDS:.0f}s 주기, "
-        f"저널 {JOURNAL_PATH}"
+        f"수집 창 {sample_start}~{sample_end}, 저널 {JOURNAL_PATH}"
     )
 
     sweeps = 0
     with httpx.Client() as client, JOURNAL_PATH.open("a", encoding="utf-8") as journal:
-        while not _shutdown and datetime.now().time() < MARKET_CLOSE:
+        while not _shutdown and datetime.now().time() < sample_end:
             sweep_start = time.monotonic()
             ts = datetime.now().isoformat(timespec="seconds")
             ok = 0
