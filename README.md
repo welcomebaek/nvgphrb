@@ -8,6 +8,16 @@ ETF NAV 괴리율 평균회귀 전략을 시뮬레이션하는 자동매매 시�
 > `live_enabled=true`)로 잠겨 있으며 기본값은 꺼져 있습니다. 단독 스크립트
 > `order_buy_005930_real.py`만 예외적으로 실전 주문이 가능하니 사용에 주의하세요.
 
+## 📖 상세 문서 (`docs/`)
+
+이 README는 빠른 시작을 위한 랜딩 페이지입니다. 원리·규칙·방법론의 상세는 아래를 참고하세요.
+
+- [docs/README.md](docs/README.md) — 기본 원리 & 파일/모듈 구조
+- [docs/trading.md](docs/trading.md) — 매수/매도 원칙, 사이징, 비용 모델, 기술(웹소켓/KIS API), **config 레퍼런스**
+- [docs/watchlist.md](docs/watchlist.md) — 데이터 수집 & 워치리스트 선정 원칙
+- [docs/operations.md](docs/operations.md) — 운영/런북(스케줄·로그·모니터링·복구)
+- [docs/roadmap.md](docs/roadmap.md) — 향후 작업
+
 ## 프로젝트 규칙 (CLAUDE.md)
 
 1. **패키지 관리는 `uv`로만** — `pip`/`poetry`/`conda` 직접 호출 금지.

@@ -20,3 +20,14 @@
 - 예시: `kis_price.py` (`uv run kis_price.py`)는 KIS Open API로 삼성전자(005930) 현재가를 조회하는 참고 구현입니다.
 - **예외**: 국내 상장 ETF/ETN 전체 목록처럼 KIS API가 제공하지 않는 데이터에 한해서만, 한국거래소(KRX)가 직접 운영하는 공식 Open API(`openapi.krx.co.kr` / `data.krx.co.kr`, `AUTH_KEY` 인증)를 사용할 수 있습니다. 이 예외는 "종목 리스트/마스터 데이터" 조회 용도로 한정하며, 개별 종목의 시세·주문·잔고 등 KIS API로 가능한 조회에는 계속 KIS API를 사용하세요.
 - 예시: `krx_etf_list.py` (`uv run krx_etf_list.py`)는 KRX Open API로 국내 상장 ETF 전체 목록을 조회하는 참고 구현입니다.
+
+## 3. 거래/워치리스트/기술 관련 코드는 `docs/`와 정합성을 맞출 것
+
+거래 로직, 워치리스트 선정, 기타 기술적 사항(웹소켓/KIS API 사용, 스케줄, 임계값 등)과 관련된 코드를 수정할 때는 `docs/` 폴더의 관련 문서를 **먼저 확인**하고, 변경 후 코드와 문서의 **정합성을 맞춰야** 합니다.
+
+- [docs/README.md](docs/README.md) — 프로젝트 기본 원리 및 파일/모듈 구조
+- [docs/trading.md](docs/trading.md) — 매수/매도 원칙, 포지션 사이징, 비용 모델, 기술적 사항, **config 레퍼런스**
+- [docs/watchlist.md](docs/watchlist.md) — 데이터 수집 방식, 워치리스트 선정/갱신 원칙
+- [docs/operations.md](docs/operations.md) — 운영/런북(스케줄, 로그, 모니터링, 복구)
+- [docs/roadmap.md](docs/roadmap.md) — 향후 작업(보류 항목)
+- 특히 임계값/필터/스코어링/스케줄/API 스펙을 바꾸면 `etf_arb_config.json` 및 해당 문서(trading.md / watchlist.md / operations.md)의 값·설명도 함께 갱신하세요. 문서와 코드가 어긋나면 문서가 아니라 실제 코드/설정을 근거로 삼되, 발견 즉시 문서를 바로잡습니다.
