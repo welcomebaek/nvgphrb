@@ -52,35 +52,48 @@
 
 ## 포지션 사이징
 
-고정 배분이 아니라 **괴리 깊이에 비례**해 투입 캐피털을 조절하고, 다단계 호가로 실제
-체결가를 미리 검증합니다. (구현: `etf_arb/signals.py`)
+고정 배분도, 괴리 깊이에 비례한 배분도 아닙니다. **자본은 상한(ceiling)만 정하고, 실제
+매수 수량은 그 상한 안에서 매도 호가창에 실제로 쌓인 물량이 결정**합니다. (구현:
+`etf_arb/signals.py`)
 
-### 1) 깊이 비례 사이징
+> 이전 설계(깊이 비례 사이징, `depth_scale_span_pct`/`min_fill_ratio`)는 폐기되었습니다.
+> 이유: 체크 주기가 비교적 고빈도라 괴리가 충분히 깊어지기 전에 이미 진입하게 되는 데다,
+> "깊은 괴리 = 큰 사이즈"라는 가정 자체가 얇은 호가창에서는 실제 체결 가능량과 무관했습니다.
+> 사이즈는 호가창의 진짜 유동성이 정하는 것이 맞다는 결론.
+
+### 1) 자본 상한 (cap_qty)
 
 ```
-depth_frac    = clip((|진입괴리| − entry_threshold_pct) / depth_scale_span_pct, 0, 1)
-target_alloc  = min_alloc_per_position_krw + (max_alloc − min_alloc) × depth_frac
-budget        = min(target_alloc, 남은 현금)
+capital_cap = min(max_alloc_per_position_krw, 남은 현금)
+cap_qty     = capital_cap // ask1
 ```
 
-기본값: `min_alloc`=100만, `max_alloc`=200만, `depth_scale_span_pct`=0.3.
-→ 괴리 −0.5%(임계값 딱 걸림)=100만원, 괴리 −0.8% 이상=200만원. 깊을수록 크게.
-`max_alloc`(200만) × `max_positions`(4) = 800만 ≤ 가상자본 850만 — 자본 안전.
+`cap_qty`는 목표 수량이 아니라 **호가 사다리 워크의 상한**입니다. `max_alloc`(200만) ×
+`max_positions`(4) = 800만 ≤ 가상자본 850만 — NAV 낡음 등으로 괴리가 비정상적으로 깊어
+보이는 아티팩트에 대비한 자본 안전장치로만 작동합니다.
 
-### 2) 다단계 호가 실효괴리 더블체크
+### 2) 호가 사다리 워크 = 사이징 그 자체
 
-1호가만 믿지 않고, `budget`으로 살 수량만큼 **호가창(1~10단계)을 걸어 올라가며 실제 가중평균
-매수가(VWAP)**를 계산합니다.
+1호가만 믿지 않고, `cap_qty`를 상한으로 **호가창(1~10단계)을 걸어 올라가며 실제 가중평균
+매수가(VWAP)**를 계산합니다. 이 워크가 "얼마나 살 수 있는가"와 "그래도 수익성이 있는가"를
+동시에 결정합니다 — 수익성 있는 깊이(profitable depth)가 곧 사이즈입니다.
 
-- `target_qty = budget // ask1`
 - 호가 사다리를 누적하며 각 단계에서 누적 VWAP과 **실효괴리 `(VWAP − NAV)/NAV`**를 계산.
-- 실효괴리가 여전히 `−entry_threshold_pct`를 만족하는 **최대 수량 `qty_ok`**만 진입.
-- `qty_ok < min_fill_ratio`(0.5) × `target_qty`이면 → `book_too_thin_effective`로 **스킵**.
+- 실효괴리가 여전히 `−entry_threshold_pct`를 만족하는 **최대 수량 `qty_ok`**까지만 누적.
+- `qty_ok`가 전혀 없으면(1호가부터 수량 0 등) → `book_too_thin_effective`로 스킵.
+- 체결된 `qty_ok × 실효VWAP`(노셔널)가 `min_alloc_per_position_krw`(최소유효거래 바닥)보다
+  작으면 → `notional_too_small`로 스킵. 왕복 고정비용(수수료 등) 대비 너무 작은 거래를
+  거르는 용도로, 더 이상 "목표배분의 일정 비율"이 아니라 절대 노셔널 기준입니다.
 
-이로써 "1호가는 싼데 물량이 없어 실제론 비싸게 사는" 함정과, 얇은 호가로 통째 스킵되던
-기회 손실을 동시에 방지합니다. 시뮬 체결기(`executor_sim.py`)도 동일하게 호가 사다리를 걸어
-체결해 신호↔체결 일관성을 유지합니다. (매도 측 bid-ladder 더블체크는 현재 미구현 —
-[roadmap.md](roadmap.md) 참조.)
+**괴리가 깊을수록 사이즈가 커지는 것은 아닙니다.** 깊이는 이론적 상한(얼마나 위 단계까지
+걸어도 `max_vwap` 이내인지)만 넓힐 뿐, 실제 `qty_ok`는 그 가격대에 실제로 쌓인 물량이
+정합니다 — 깊고 얇은 호가창은 작은 사이즈(한 자릿수 수량, 몇십만원 레벨)로, 얕고 두꺼운
+호가창은 `cap_qty`에 가까운 큰 사이즈로 이어질 수 있습니다.
+
+이로써 "1호가는 싼데 물량이 없어 실제론 비싸게 사는" 함정과, 자본 배분 공식이 실제 유동성과
+무관하게 목표수량을 정해 체결 품질을 왜곡하는 문제를 동시에 방지합니다. 시뮬 체결기
+(`executor_sim.py`)도 동일하게 호가 사다리를 걸어 체결해 신호↔체결 일관성을 유지합니다.
+(매도 측 bid-ladder 더블체크는 현재 미구현 — [roadmap.md](roadmap.md) 참조.)
 
 ---
 
@@ -174,17 +187,14 @@ budget        = min(target_alloc, 남은 현금)
 | `force_exit_days` | 5 | 강제청산 기한(거래일) |
 | `force_exit_time` | "14:50" | 강제청산 실행 시각 |
 | `disaster_alert_pct` | 3.0 | 재앙 경고 괴리(%) — 경고만 |
-| `depth_scale_span_pct` | 0.3 | 깊이비례 사이징 스케일 폭(%p) |
-| `min_fill_ratio` | 0.5 | 실효괴리 더블체크 최소 체결비율 |
 
 ### `risk` — 자본/한도
 
 | 필드 | 기본값 | 의미 |
 |---|---|---|
 | `virtual_capital_krw` | 8500000 | 가상 자본 |
-| `alloc_per_position_krw` | 2000000 | (레거시, 미사용 — min/max로 대체) |
-| `min_alloc_per_position_krw` | 1000000 | 종목당 최소 배분 |
-| `max_alloc_per_position_krw` | 2000000 | 종목당 최대 배분 |
+| `min_alloc_per_position_krw` | 1000000 | 최소유효거래 노셔널 바닥 (미달 시 `notional_too_small`) |
+| `max_alloc_per_position_krw` | 2000000 | 종목당 자본 상한(호가 사다리 워크의 `cap_qty` 산출용) |
 | `max_positions` | 4 | 동시 보유 상한 |
 | `max_entries_per_day` | 6 | 하루 진입 상한 |
 | `cooldown_minutes` | 60 | 청산 후 재진입 금지 시간 |

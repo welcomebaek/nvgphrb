@@ -53,14 +53,11 @@ def make_cfg(**signal_overrides) -> Config:
         force_exit_days=5,
         force_exit_time="14:50",
         disaster_alert_pct=3.0,
-        depth_scale_span_pct=0.3,
-        min_fill_ratio=0.5,
     )
     sig.update(signal_overrides)
     risk_overrides = sig.pop("_risk", {})
     risk_kwargs = dict(
         virtual_capital_krw=8_500_000,
-        alloc_per_position_krw=2_000_000,
         max_positions=4,
         max_entries_per_day=6,
         cooldown_minutes=60,
@@ -183,12 +180,11 @@ class TestEntryGates:
         assert isinstance(d, EnterSignal)
         assert d.code == "233740"
         assert d.limit_price == 9_940
-        # depth-proportional sizing: disp -0.6%, threshold 0.5%, span 0.3%
-        #   depth_frac = (0.6-0.5)/0.3 = 1/3
-        #   target_alloc = 1_000_000 + 1_000_000*(1/3) = 1_333_333.33
-        #   target_qty = floor(min(1_333_333.33, 8_500_000)/9940) = 134
-        # empty ladder -> single-level fallback fills all 134 at ask1.
-        assert d.qty == 134
+        # capital-capped sizing: cap_qty = floor(min(max_alloc, cash)/ask1)
+        #   = floor(min(2_000_000, 8_500_000)/9940) = 201
+        # empty ladder -> single-level fallback (qty 1000) fills all 201 at
+        # ask1, well under max_vwap (9950) -> no reduction from the walk.
+        assert d.qty == 201
         assert d.disparity_pct == pytest.approx(-0.6, abs=1e-6)
         assert d.effective_vwap == pytest.approx(9_940.0)
         assert d.effective_disparity_pct == pytest.approx(-0.6, abs=1e-6)
@@ -253,91 +249,85 @@ class TestEntryGates:
         assert isinstance(d, EnterSignal)
 
     def test_qty_zero(self):
-        # price above the whole allocation -> qty 0
+        # price above the whole capital cap -> cap_qty 0
         snap = make_snap(nav=3_000_000.0, ask1=2_970_000, bid1=2_985_000)
         d = entry(snap=snap, tracker=confirmed_tracker())
         assert d == NoAction("qty_zero")
 
-    def test_qty_capped_by_cash_not_alloc(self):
-        # cash 1M < target_alloc 1.33M -> budget capped by cash
-        d = entry(view=make_view(cash=1_000_000))
+    def test_qty_capped_by_cash_not_max_alloc(self):
+        # cash 1.5M < max_alloc 2M -> capital_cap capped by cash, not max_alloc
+        d = entry(view=make_view(cash=1_500_000))
         assert isinstance(d, EnterSignal)
-        assert d.qty == 100  # floor(1_000_000 / 9940)
+        assert d.qty == 150  # floor(1_500_000 / 9940)
 
 
-# ------------------------------------------------- depth-proportional sizing
+# --------------------------------------------- capital-capped book sizing
 
-class TestDepthProportionalSizing:
-    """nav=10000; ask1 sets the disparity. threshold 0.5%, span 0.3%,
-    min_alloc 1M, max_alloc 2M. Default cash 8.5M so budget = target_alloc.
-    Default ask1_qty 1000 (single-level fallback) fills the full target."""
+class TestCapitalCappedSizing:
+    """nav=10000; ask1 sets the disparity. threshold 0.5%, min_alloc 1M,
+    max_alloc 2M. Default cash 8.5M so capital_cap = max_alloc. Default
+    ask1_qty 1000 (single-level fallback) fills the full cap_qty."""
 
-    def test_shallow_disparity_uses_min_alloc(self):
-        # disp exactly -0.5% -> depth_frac 0 -> target_alloc = min 1_000_000
-        d = entry(snap=make_snap(ask1=9_950))
+    def test_cap_qty_is_capital_over_price_regardless_of_depth(self):
+        # OLD design scaled allocation with disparity depth (depth_frac).
+        # NEW design: capital_cap is fixed at max_alloc (bounded only by
+        # cash), so cap_qty = floor(capital_cap / ask1) - it differs between
+        # a shallow and a deep disparity only because the price differs, not
+        # because of any depth-scaling bonus.
+        shallow = entry(snap=make_snap(ask1=9_950))  # disp -0.5% (threshold)
+        deep = entry(snap=make_snap(ask1=9_800))      # disp -2.0% (much deeper)
+        assert isinstance(shallow, EnterSignal)
+        assert isinstance(deep, EnterSignal)
+        assert shallow.qty == 2_000_000 // 9_950  # == 201
+        assert deep.qty == 2_000_000 // 9_800      # == 204
+        # both spend ~all of capital_cap - notional isn't depth-proportional
+        assert shallow.qty * 9_950 <= 2_000_000
+        assert deep.qty * 9_800 <= 2_000_000
+
+    def test_qty_capped_by_real_book_liquidity_below_capital_cap(self):
+        # cap_qty would be 201 (2_000_000 // 9940), but only 150 shares sit
+        # at ask1 within max_vwap; deeper level (9990) breaches max_vwap
+        # (9950) immediately, so the walk stops at the real liquidity.
+        snap = make_snap(ask_ladder=[(9_940, 150), (9_990, 1_000)])
+        d = entry(snap=snap)
         assert isinstance(d, EnterSignal)
-        assert d.qty == 100  # floor(1_000_000 / 9950)
+        assert d.qty == 150  # bound by book depth, not by capital_cap (201)
+        assert d.limit_price == 9_940
+        assert d.effective_vwap == pytest.approx(9_940.0)
 
-    def test_deep_disparity_uses_max_alloc(self):
-        # disp -0.8% -> depth_frac (0.8-0.5)/0.3 = 1.0 -> max 2_000_000
-        d = entry(snap=make_snap(ask1=9_920))
-        assert isinstance(d, EnterSignal)
-        assert d.qty == 201  # floor(2_000_000 / 9920)
+    def test_notional_too_small_skips_when_book_too_thin(self):
+        # ask1 depth only 40 shares within max_vwap -> notional 40*9940
+        # = 397_600, well under the 1_000_000 minimum-viable-trade floor.
+        snap = make_snap(ask_ladder=[(9_940, 40), (9_990, 1_000)])
+        assert entry(snap=snap) == NoAction("notional_too_small")
 
-    def test_mid_disparity_interpolates(self):
-        # disp -0.65% -> depth_frac 0.5 -> 1_500_000
-        d = entry(snap=make_snap(ask1=9_935))
-        assert isinstance(d, EnterSignal)
-        assert d.qty == 150  # floor(1_500_000 / 9935)
-
-    def test_depth_frac_clipped_at_one(self):
-        # disp -1.0% -> (1.0-0.5)/0.3 = 1.667 -> clipped to 1.0 -> max 2_000_000
-        d = entry(snap=make_snap(ask1=9_900))
-        assert isinstance(d, EnterSignal)
-        assert d.qty == 202  # floor(2_000_000 / 9900)
-
-    def test_deeper_disparity_never_shrinks_allocation(self):
-        shallow = entry(snap=make_snap(ask1=9_950))  # min alloc
-        deep = entry(snap=make_snap(ask1=9_920))      # max alloc
-        # more capital at 9920 despite the higher per-share price
-        assert deep.qty * 9_920 > shallow.qty * 9_950
+    def test_book_too_thin_effective_when_zero_ask_qty(self):
+        # ask1 present but displayed qty is 0 -> no viable fill at all
+        # (distinct from notional_too_small: here effective_buy_fill itself
+        # finds nothing to walk, vs. a real-but-tiny fill).
+        snap = make_snap(ask1_qty=0, ask_ladder=[])
+        assert entry(snap=snap) == NoAction("book_too_thin_effective")
 
 
 # ----------------------------------------- effective-disparity double-check
 
 class TestEffectiveDisparityDoubleCheck:
-    """Default snap: disp -0.6% -> target_alloc 1_333_333.33 -> target_qty 134,
-    max_vwap = 10000*(1-0.5/100) = 9950. min_fill_ratio 0.5 -> floor 67."""
-
-    def test_book_too_thin_effective_skips(self):
-        # ask1 depth 40 (< 67); ask2 @9990 erodes VWAP past 9950 -> qty_ok
-        # stuck at 40 < min_fill_ratio*target -> skip.
-        snap = make_snap(ask_ladder=[(9_940, 40), (9_990, 1_000)])
-        assert entry(snap=snap) == NoAction("book_too_thin_effective")
-
-    def test_reduced_qty_when_deeper_level_erodes_edge(self):
-        # ask1 depth 100 (>= 67); ask2 @9990 erodes edge at full size, so
-        # qty_ok caps at 100 (< target 134) but clears min_fill_ratio -> enter.
-        snap = make_snap(ask_ladder=[(9_940, 100), (9_990, 1_000)])
-        d = entry(snap=snap)
-        assert isinstance(d, EnterSignal)
-        assert d.qty == 100
-        assert d.limit_price == 9_940  # only ask1 level accepted
-        assert d.effective_vwap == pytest.approx(9_940.0)
-        assert d.effective_disparity_pct == pytest.approx(-0.6, abs=1e-6)
+    """Default snap: disp -0.6%, cap_qty = floor(2_000_000/9940) = 201,
+    max_vwap = 10000*(1-0.5/100) = 9950."""
 
     def test_multi_level_accepted_when_vwap_still_clears(self):
-        # ask2 only slightly higher (9945): full 134 fills, VWAP ~9941.3
-        # still <= 9950 -> enter full size, limit at worst accepted level 9945.
+        # ask2 only slightly higher (9945): full cap_qty (201) fills across
+        # 2 levels, VWAP still <= 9950 -> enter full size, limit at the
+        # worst accepted level 9945.
         snap = make_snap(ask_ladder=[(9_940, 100), (9_945, 1_000)])
         d = entry(snap=snap)
         assert isinstance(d, EnterSignal)
-        assert d.qty == 134
+        assert d.qty == 201
         assert d.limit_price == 9_945
-        cost = 100 * 9_940 + 34 * 9_945
-        assert d.effective_vwap == pytest.approx(cost / 134)
+        cost = 100 * 9_940 + 101 * 9_945
+        assert d.effective_vwap == pytest.approx(cost / 201)
         assert d.effective_disparity_pct == pytest.approx(
-            (cost / 134 - 10_000) / 10_000 * 100
+            (cost / 201 - 10_000) / 10_000 * 100
         )
 
     def test_exact_boundary_vwap_accepted(self):
@@ -345,13 +335,13 @@ class TestEffectiveDisparityDoubleCheck:
         snap = make_snap(ask1=9_950, ask_ladder=[(9_950, 1_000)])
         d = entry(snap=snap)
         assert isinstance(d, EnterSignal)  # equality clears the <= test
-        assert d.qty == 100  # min alloc (disp -0.5), floor(1M/9950)
+        assert d.qty == 2_000_000 // 9_950  # == 201, capital-cap-bound
 
     def test_empty_ladder_single_level_fallback_enters(self):
-        # No ladder at all -> single ask1 level -> old behavior preserved.
+        # No ladder at all -> single ask1 level -> fallback still works.
         d = entry(snap=make_snap(ask_ladder=[]))
         assert isinstance(d, EnterSignal)
-        assert d.qty == 134
+        assert d.qty == 201
         assert d.limit_price == 9_940
 
 

@@ -202,36 +202,32 @@ def evaluate_entry(
     ):
         return NoAction("confirming")
 
-    # -- depth-proportional sizing -----------------------------------------
+    # -- capital-capped, order-book-driven sizing ---------------------------
     # disp is not None => nav > 0 and ask1 truthy, so the divisions are safe.
-    # disp is negative and <= -entry_threshold_pct here. Deeper (more
-    # negative) disparity commits more capital, up to max_alloc; shallower
-    # (right at the threshold) commits min_alloc.
-    depth_frac = (abs(disp) - s.entry_threshold_pct) / s.depth_scale_span_pct
-    depth_frac = max(0.0, min(1.0, depth_frac))
-    target_alloc = (
-        r.min_alloc_per_position_krw
-        + (r.max_alloc_per_position_krw - r.min_alloc_per_position_krw) * depth_frac
-    )
-    budget = min(target_alloc, portfolio.cash)
-    target_qty = int(budget // snapshot.ask1)
-    if target_qty <= 0:
+    # Capital no longer determines the size directly - it only sets a
+    # generous ceiling (cap_qty). The ladder walk below is what actually
+    # decides how much we buy: real liquidity stacked in the profitable
+    # price range IS the size, not a formula proportional to disparity depth.
+    capital_cap = min(r.max_alloc_per_position_krw, portfolio.cash)
+    cap_qty = int(capital_cap // snapshot.ask1)
+    if cap_qty <= 0:
         return NoAction("qty_zero")
 
-    # -- multi-level order-book effective-disparity double-check -----------
-    # Don't trust ask1 alone: walk the ask ladder and verify the real VWAP
-    # for the shares we'd buy still clears the entry threshold. max_vwap is
-    # the highest average price whose effective disparity is still
-    # <= -entry_threshold_pct: (vwap-nav)/nav*100 <= -theta  <=>  vwap <=
-    # nav*(1 - theta/100). If the book is too thin to fill min_fill_ratio of
-    # the intended size while staying profitable-with-margin, skip.
+    # -- multi-level order-book walk: sizing AND effective-disparity check -
+    # Don't trust ask1 alone: walk the ask ladder up to cap_qty shares,
+    # stopping at the deepest level whose cumulative VWAP still clears the
+    # entry threshold. max_vwap is the highest average price whose effective
+    # disparity is still <= -entry_threshold_pct: (vwap-nav)/nav*100 <=
+    # -theta  <=>  vwap <= nav*(1 - theta/100). qty_ok is the final size -
+    # skip only when the resulting notional can't clear the minimum-viable-
+    # trade floor (not worth the fixed costs of a round trip).
     max_vwap = snapshot.nav * (1.0 - s.entry_threshold_pct / 100.0)
-    fill = snapshot.effective_buy_fill(target_qty, max_vwap)
+    fill = snapshot.effective_buy_fill(cap_qty, max_vwap)
     if fill is None:
         return NoAction("book_too_thin_effective")
     qty_ok, eff_vwap, worst_price = fill
-    if qty_ok < s.min_fill_ratio * target_qty:
-        return NoAction("book_too_thin_effective")
+    if qty_ok * eff_vwap < r.min_alloc_per_position_krw:
+        return NoAction("notional_too_small")
     eff_disp = (eff_vwap - snapshot.nav) / snapshot.nav * 100.0
 
     tracker.reset(code)  # a fresh confirmation is required for any re-entry

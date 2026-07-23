@@ -53,22 +53,17 @@ class SignalsConfig:
     force_exit_days: int   # trading days
     force_exit_time: str   # "HH:MM"
     disaster_alert_pct: float
-    # 괴리 깊이(%)를 진입임계값 위로 이만큼 초과하면 max_alloc까지 선형 스케일.
-    depth_scale_span_pct: float = 0.3
-    # 다단계 호가 유효괴리 이중검증: 목표수량 대비 이 비율 이상을 임계 이내로
-    # 채울 수 있어야 진입(그렇지 않으면 book_too_thin_effective로 스킵).
-    min_fill_ratio: float = 0.5
 
 
 @dataclass(frozen=True)
 class RiskConfig:
     virtual_capital_krw: int
-    alloc_per_position_krw: int
     max_positions: int
     max_entries_per_day: int
     cooldown_minutes: int
-    # 괴리 깊이 비례 사이징: 얕으면 min, 깊으면 max까지 자본을 배분.
-    # (구 alloc_per_position_krw는 하위호환용으로 남겨두되 사이징에는 미사용.)
+    # 호가창 유동성 기반 사이징: max_alloc은 자본 상한(호가 사다리 워크의 목표
+    # 수량 캡), min_alloc은 실제 체결 노셔널이 이보다 작으면 스킵하는 최소유효
+    # 거래 바닥(왕복 고정비용 대비 너무 작은 거래를 거름).
     min_alloc_per_position_krw: int = 1_000_000
     max_alloc_per_position_krw: int = 2_000_000
 
@@ -148,12 +143,9 @@ def load_config(path: Path | None = None) -> Config:
                 force_exit_days=int(s["force_exit_days"]),
                 force_exit_time=str(s["force_exit_time"]),
                 disaster_alert_pct=float(s["disaster_alert_pct"]),
-                depth_scale_span_pct=float(s.get("depth_scale_span_pct", 0.3)),
-                min_fill_ratio=float(s.get("min_fill_ratio", 0.5)),
             ),
             risk=RiskConfig(
                 virtual_capital_krw=int(r["virtual_capital_krw"]),
-                alloc_per_position_krw=int(r["alloc_per_position_krw"]),
                 max_positions=int(r["max_positions"]),
                 max_entries_per_day=int(r["max_entries_per_day"]),
                 cooldown_minutes=int(r["cooldown_minutes"]),
@@ -221,12 +213,7 @@ def _validate(cfg: Config) -> None:
             f"({u.spread_min_days}, spread_lookback_days={u.spread_lookback_days})"
         )
 
-    if r.alloc_per_position_krw * r.max_positions > r.virtual_capital_krw * 1.05:
-        raise ConfigError(
-            "alloc_per_position_krw x max_positions가 virtual_capital_krw를 초과합니다"
-        )
-
-    # 깊이 비례 사이징 안전장치.
+    # 호가창 유동성 기반 사이징 안전장치.
     if r.min_alloc_per_position_krw > r.max_alloc_per_position_krw:
         raise ConfigError(
             "min_alloc_per_position_krw는 max_alloc_per_position_krw보다 클 수 없습니다 "
@@ -237,10 +224,6 @@ def _validate(cfg: Config) -> None:
             "max_alloc_per_position_krw x max_positions가 virtual_capital_krw(105%)를 "
             "초과합니다 (동시 최대포지션 자본 안전장치)"
         )
-    if s.depth_scale_span_pct <= 0:
-        raise ConfigError("depth_scale_span_pct는 0보다 커야 합니다")
-    if not (0.0 < s.min_fill_ratio <= 1.0):
-        raise ConfigError("min_fill_ratio는 0 초과 1 이하이어야 합니다")
 
     for field_name in ("no_entry_before", "no_entry_after", "force_exit_time"):
         _parse_hhmm(getattr(s, field_name), field_name)
