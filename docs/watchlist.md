@@ -115,6 +115,24 @@
   에러 종료.
 - 팔리고 나면 특혜 소멸 — 다음날부터 일반 후보로 재심사.
 
+### 핀 = 청산 보장이지 신규 진입 허가가 아님 (`entry_eligible`)
+
+히스테리시스의 목적은 **청산 신호 수신 보장**이지 "이 종목이 지금 거래할 만하다"는 뜻이
+아닙니다. 그런데 핀된 종목도 러너에게는 그냥 워치리스트의 다른 종목과 동일해서, 청산 후
+같은 날 안에 신선 진입 시그널이 뜨면 그대로 재진입해버립니다 — 2026-07-27 `0080Y0`
+(5일 이동평균 스프레드 0.196% > 상한 0.15%로 원래는 탈락해야 할 종목)이 청산 직후
+재진입해 손실(−42,179원)로 마감한 사례로 실측됨.
+
+- 리프레셔가 핀된 종목마다 하드필터 통과 여부(`blended_by_code` 소속 여부)와 스프레드
+  N일 이동평균(`exclude_for_spread`, 신규후보와 동일 판정)을 재확인해 `entry_eligible`
+  필드를 기록합니다. 하드필터 폴백(`aggregates_fallback`/`previous_watchlist_fallback`/
+  `stub_unknown`)으로 떨어진 핀 종목은 무조건 `entry_eligible=false`.
+- 러너는 `entry_eligible=false`인 코드 집합(`entry_ineligible_codes`)을 신규 진입에서만
+  차단합니다(청산 평가는 그대로 계속) — 스킵사유 `watchlist_entry_ineligible`.
+- `entry_eligible` 필드가 없는 레거시 레코드(`etf_universe_select.py` 구버전 스키마)는
+  기존 동작대로 제한 없음(True)으로 취급.
+- `print_final_table`의 "보유" 열에 `Y!`로 표시(정상 핀은 `Y`).
+
 ---
 
 ## 4. 기대괴리 분포 축적 & 동적 임계값 (2단계 구조)
