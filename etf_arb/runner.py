@@ -76,6 +76,18 @@ def find_orphan_risk(held_codes: set[str], watchlist_codes: set[str]) -> set[str
     return held_codes - watchlist_codes
 
 
+def entry_ineligible_codes(tickers: list[dict[str, Any]]) -> set[str]:
+    """entry_eligible=False로 표시된 종목 코드 집합 (순수함수, 유닛테스트 대상).
+
+    보유종목 히스테리시스로 핀된 종목은 하드필터/스프레드 필터를 실제로
+    통과하지 못했을 수 있다(오펀 방지 목적상 워치리스트에는 남지만). 그 경우
+    워치리스트 리프레셔가 entry_eligible=false로 표시해두고, 이 집합에 속한
+    코드는 신규 진입을 차단한다(청산 평가는 계속). 필드가 아예 없는 레거시
+    레코드(예: etf_universe_select.py 구버전 스키마)는 기존 동작 그대로
+    제한 없음(True)으로 취급한다."""
+    return {str(t["code"]) for t in tickers if not t.get("entry_eligible", True)}
+
+
 class SimTradeEngine:
     """Phase 3 trading brain: snapshot updates -> pure signals -> sim fills.
 
@@ -87,9 +99,16 @@ class SimTradeEngine:
 
     DISASTER_REALERT_SECONDS = 300.0  # per-code journal alert rate limit
 
-    def __init__(self, config: Config, cal: TradingCalendar, market: MarketState):
+    def __init__(
+        self,
+        config: Config,
+        cal: TradingCalendar,
+        market: MarketState,
+        entry_ineligible_codes: set[str] | None = None,
+    ):
         self.config = config
         self.market = market
+        self.entry_ineligible_codes = entry_ineligible_codes or set()
         self.portfolio = Portfolio.load(
             initial_cash=config.risk.virtual_capital_krw
         )
@@ -136,6 +155,13 @@ class SimTradeEngine:
     # -- entry path ---------------------------------------------------------
 
     def _evaluate_entry(self, code: str, st: TickerState, now: datetime) -> None:
+        if code in self.entry_ineligible_codes:
+            self.skip_counts["watchlist_entry_ineligible"] += 1
+            journal.append(
+                "entry_skip",
+                {"code": code, "reason": "watchlist_entry_ineligible"},
+            )
+            return
         view = self.portfolio.view(now.date())
         decision = evaluate_entry(st, self.config, now, view, self.tracker)
         if isinstance(decision, NoAction):
@@ -318,7 +344,9 @@ class Runner:
         if not observe_only:
             if cal is None:
                 raise RunnerError("시뮬 매매 모드에는 TradingCalendar가 필요합니다")
-            self.engine = SimTradeEngine(config, cal, self.state)
+            self.engine = SimTradeEngine(
+                config, cal, self.state, entry_ineligible_codes(tickers)
+            )
             self.on_snapshot = self.engine.handle_snapshot
 
         self._stop_event = asyncio.Event()

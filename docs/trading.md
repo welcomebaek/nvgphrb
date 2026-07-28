@@ -23,6 +23,10 @@
 
 ### 진입 (매수) 조건 — 모든 게이트를 순서대로 통과해야 함
 
+0. **워치리스트 진입자격 게이트** (`evaluate_entry` 밖, 러너 레벨): 보유종목 히스테리시스로
+   핀된 종목이 하드필터/스프레드 필터를 실제로 통과 못 했으면(`entry_eligible=false`) 신규
+   진입 자체를 차단(스킵사유 `watchlist_entry_ineligible`) — 핀은 청산 신호 수신을
+   보장하려는 것이지 신규 진입을 허가하는 게 아님. 상세: [watchlist.md](watchlist.md#핀--청산-보장이지-신규-진입-허가가-아님-entry_eligible).
 1. **리스크 게이트**: 이미 보유 중 아님, 오늘 진입 횟수 < `max_entries_per_day`(6), 동시
    포지션 < `max_positions`(4), 해당 종목 쿨다운(청산 후 `cooldown_minutes`=60분) 아님.
 2. **진입 시간창**: `no_entry_before`(09:05) ~ `no_entry_after`(15:00). 장 초반 LP 호가 안정

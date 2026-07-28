@@ -96,10 +96,18 @@ def _entry_from_candidate(
     main_key: str,
     pinned: bool,
     spread: float | None,
+    entry_eligible: bool,
     nday_ma_spread_pct: float | None = None,
     spread_days: int = 0,
 ) -> dict[str, Any]:
-    """rank_survivors/blend_scores를 거친(필터 통과) 후보 -> 워치리스트 항목."""
+    """rank_survivors/blend_scores를 거친(필터 통과) 후보 -> 워치리스트 항목.
+
+    entry_eligible: 신규 진입을 허용해도 되는지. 신규후보(pinned=False)는 이
+    함수 호출 전 이미 스프레드 게이트를 통과했으므로 항상 True. 보유종목
+    히스테리시스로 핀된 경우(pinned=True)는 하드필터는 통과했지만(그래서 이
+    함수로 옴) 스프레드 N일 이동평균이 상한을 넘을 수 있어 호출측이 별도로
+    계산해 전달한다 - 핀은 "청산 신호는 계속 받게" 하려는 것이지 "신규
+    진입해도 된다"는 뜻이 아니다."""
     main_stats = cand["episodes"][main_key]
     return {
         "code": cand["code"],
@@ -115,6 +123,7 @@ def _entry_from_candidate(
         "mean_net_edge_pct": main_stats["mean_net_edge_pct"],
         "score": cand["score"],
         "pinned_held_position": pinned,
+        "entry_eligible": entry_eligible,
         "daily_score": cand["score"],
         "intraday_score": cand.get("intraday_score"),
         "combined_score": cand.get("combined_score"),
@@ -171,6 +180,7 @@ def _entry_from_aggregate(
         "mean_net_edge_pct": stats["mean_net_edge_pct"],
         "score": score,
         "pinned_held_position": True,
+        "entry_eligible": False,
         "daily_score": score,
         "intraday_score": None,
         "combined_score": None,
@@ -196,6 +206,7 @@ def _entry_from_previous(prev: dict[str, Any]) -> dict[str, Any]:
         "mean_net_edge_pct": prev.get("mean_net_edge_pct"),
         "score": prev.get("score"),
         "pinned_held_position": True,
+        "entry_eligible": False,
         "daily_score": prev.get("score"),
         "intraday_score": None,
         "combined_score": None,
@@ -220,6 +231,7 @@ def _bare_stub(code: str) -> dict[str, Any]:
         "mean_net_edge_pct": None,
         "score": None,
         "pinned_held_position": True,
+        "entry_eligible": False,
         "daily_score": None,
         "intraday_score": None,
         "combined_score": None,
@@ -242,7 +254,10 @@ def print_final_table(tickers: list[dict[str, Any]]) -> None:
         intraday = t["intraday_score"]
         combined = t["combined_score"]
         spread = t["median_spread_pct"]
-        pinned = "Y" if t["pinned_held_position"] else ""
+        if t["pinned_held_position"]:
+            pinned = "Y" if t.get("entry_eligible", True) else "Y!"
+        else:
+            pinned = ""
         print(
             f"{i:>2} {t['code']:<7} {name:<20} {pinned:>4} "
             f"{(f'{daily:.3f}' if daily is not None else '-'):>8} "
@@ -251,6 +266,14 @@ def print_final_table(tickers: list[dict[str, Any]]) -> None:
             f"{t['median_trdval'] / 1e8:>10.1f} "
             f"{(f'{spread:.3f}' if spread is not None else '-'):>9} "
             f"{t['data_source']:<24}"
+        )
+    if any(
+        t["pinned_held_position"] and not t.get("entry_eligible", True)
+        for t in tickers
+    ):
+        print(
+            "  (Y! = 보유중이라 핀되었지만 하드필터/스프레드 미충족 -> "
+            "신규 진입 차단, 청산만 평가)"
         )
 
 
@@ -431,8 +454,16 @@ def main() -> int:
     for code in sorted(held_codes):
         if code in blended_by_code:
             _ma, _n_days = _spread_ma_for(code)
+            # 하드필터는 blended_by_code에 있다는 사실 자체로 이미 통과했으므로
+            # 남은 변수는 스프레드뿐 - 신규후보와 동일한 exclude_for_spread로
+            # 판정하되(오펀 방지 목적상) 워치리스트에서 배제하지는 않고 신규
+            # 진입 자격만 결정한다.
+            _spread_excluded = exclude_for_spread(
+                _ma, _n_days, ucfg.spread_min_days, ucfg.max_spread_pct
+            )
             entry = _entry_from_candidate(
                 blended_by_code[code], main_key, pinned=True, spread=None,
+                entry_eligible=not _spread_excluded,
                 nday_ma_spread_pct=round(_ma, 4) if _ma is not None else None,
                 spread_days=_n_days,
             )
@@ -539,6 +570,7 @@ def main() -> int:
             fresh_entries.append(
                 _entry_from_candidate(
                     cand, main_key, pinned=False, spread=round(spread, 4),
+                    entry_eligible=True,
                     nday_ma_spread_pct=round(ma, 4) if ma is not None else None,
                     spread_days=n_days,
                 )
@@ -560,6 +592,7 @@ def main() -> int:
             fresh_entries.append(
                 _entry_from_candidate(
                     cand, main_key, pinned=False, spread=None,
+                    entry_eligible=True,
                     nday_ma_spread_pct=round(ma, 4) if ma is not None else None,
                     spread_days=n_days,
                 )
