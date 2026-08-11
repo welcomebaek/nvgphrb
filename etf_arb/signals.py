@@ -252,22 +252,31 @@ def evaluate_exit(
     cfg: Config,
     now: datetime,
 ) -> ExitDecision:
-    """Exit gates. Force exit ignores staleness (deadline discipline beats
-    data quality); the normal exit requires fresh NAV+quote and a regular
-    session so the disparity comparison is meaningful."""
+    """Exit gates. Force exit ignores staleness (exit discipline beats data
+    quality); the normal exit requires fresh NAV+quote and a regular session
+    so the disparity comparison is meaningful."""
     s = cfg.signals
     now_epoch = now.timestamp()
     today = now.date()
     disp = snapshot.exit_disparity_pct()
 
-    # -- force exit: deadline reached -> unconditional bid-side sell --------
-    # On the deadline day we wait until force_exit_time (14:50, before the
-    # closing auction); once the deadline day has PASSED we exit at the first
-    # opportunity regardless of time-of-day.
+    # -- force exit: unconditional bid-side sell ----------------------------
+    # force_exit_daily (default): EVERY day at force_exit_time we flush the
+    # whole book, so nothing carries overnight - the disparity edge is small
+    # and an overnight gap on a leveraged ETF dwarfs it in either direction
+    # (2026-08-06: a single carried position lost 150,105 KRW on a -7.6% gap).
+    # force_exit_time sits before the closing auction (15:20) so the flush
+    # runs on regular-session quotes and thin names get ~20 minutes of retries
+    # from the runner's 10-second force_exit_sweep.
+    # With daily flush on, the force_exit_days deadline is just a backstop for
+    # a remnant too illiquid to sell before the close; once that deadline has
+    # PASSED we exit at the first opportunity regardless of time-of-day.
+    force_time_reached = now.time() >= _hhmm(s.force_exit_time)
     overdue = today > position.deadline_date
     due_now = (
-        today == position.deadline_date
-        and now.time() >= _hhmm(s.force_exit_time)
+        force_time_reached
+        if s.force_exit_daily
+        else (today == position.deadline_date and force_time_reached)
     )
     if overdue or due_now:
         if not snapshot.bid1:

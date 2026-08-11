@@ -24,7 +24,8 @@
     "no_entry_before": "09:05",
     "no_entry_after": "15:00",
     "force_exit_days": 5,
-    "force_exit_time": "14:50",
+    "force_exit_time": "15:00",
+    "force_exit_daily": true,
     "disaster_alert_pct": 3.0
   },
   "risk": {
