@@ -193,6 +193,17 @@ def evaluate_entry(
     if disp > -s.entry_threshold_pct:
         tracker.reset(code)
         return NoAction("disparity_above_threshold")
+    # Implausibly deep discount = almost certainly bad data, not opportunity.
+    # 2026-07-28 `0080Y0` showed -3~-7% for five straight hours with a
+    # perfectly tight, internally consistent book (ask 9,485 / bid 9,425)
+    # while NAV sat ~8% too high and then stepped down by 8% at 14:12 - the
+    # NAV feed was wrong all day, not the price. A single tick can't prove
+    # that, but a discount this deep has never been genuine in our data
+    # (only 1 of 64 round trips ever entered below -1.5%), so refuse it
+    # outright rather than size into it.
+    if disp < -s.max_entry_disparity_pct:
+        tracker.reset(code)
+        return NoAction("disparity_implausible")
 
     # -- debounce: continuously true for confirm_seconds on >=2 quote ticks -
     confirm = tracker.observe(code, now_epoch, snapshot.quote_ts)

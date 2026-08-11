@@ -48,6 +48,19 @@ def test_entry_window_equal_to_force_exit_time_is_allowed(tmp_path):
     assert load_config(path).signals.no_entry_after == "15:00"
 
 
+def test_entry_disparity_ceiling_must_exceed_threshold(tmp_path):
+    # 하한이 임계값보다 얕으면 진입 가능한 구간이 사라진다.
+    path = _write_variant(
+        tmp_path, entry_threshold_pct=0.5, max_entry_disparity_pct=0.4
+    )
+    with pytest.raises(ConfigError, match="max_entry_disparity_pct"):
+        load_config(path)
+
+
+def test_entry_disparity_ceiling_default_is_three_pct():
+    assert load_config().signals.max_entry_disparity_pct == 3.0
+
+
 def test_late_entry_window_allowed_when_daily_flush_off(tmp_path):
     # 기한 청산만 하는 구 동작에서는 진입창이 더 늦어도 문제되지 않는다.
     path = _write_variant(

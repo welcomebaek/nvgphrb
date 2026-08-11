@@ -26,7 +26,8 @@
     "force_exit_days": 5,
     "force_exit_time": "15:00",
     "force_exit_daily": true,
-    "disaster_alert_pct": 3.0
+    "disaster_alert_pct": 3.0,
+    "max_entry_disparity_pct": 3.0
   },
   "risk": {
     "virtual_capital_krw": 8500000,

@@ -54,6 +54,11 @@ class SignalsConfig:
     force_exit_days: int   # trading days
     force_exit_time: str   # "HH:MM"
     disaster_alert_pct: float
+    # 진입 괴리 하한(안전장치): 이보다 더 깊은 괴리는 기회가 아니라 데이터
+    # 이상으로 보고 진입 거부(disparity_implausible). NAV 피드가 종일 틀렸던
+    # 실측 사례(0080Y0 2026-07-28) 대비 - 사후 탐지가 아니라 단일 틱만으로
+    # 진입 전에 막는 것이 핵심.
+    max_entry_disparity_pct: float = 3.0
     # 매일 force_exit_time에 보유 전량 강제청산(오버나이트 캐리 제거). 켜면
     # force_exit_days(기한)는 15:00에 다 못 판 잔량이 다음날로 넘어간 극단
     # 케이스의 백스톱으로만 남는다. 끄면 기한 청산만 하는 구 동작.
@@ -149,6 +154,9 @@ def load_config(path: Path | None = None) -> Config:
                 force_exit_days=int(s["force_exit_days"]),
                 force_exit_time=str(s["force_exit_time"]),
                 disaster_alert_pct=float(s["disaster_alert_pct"]),
+                max_entry_disparity_pct=float(
+                    s.get("max_entry_disparity_pct", 3.0)
+                ),
                 force_exit_daily=bool(s.get("force_exit_daily", True)),
             ),
             risk=RiskConfig(
@@ -197,6 +205,14 @@ def _validate(cfg: Config) -> None:
 
     if s.exit_threshold_pct >= s.entry_threshold_pct:
         raise ConfigError("exit_threshold_pct는 entry_threshold_pct보다 작아야 합니다")
+
+    # 진입 괴리 하한이 진입 임계값보다 얕으면 통과 가능한 구간이 사라진다.
+    if s.max_entry_disparity_pct <= s.entry_threshold_pct:
+        raise ConfigError(
+            f"max_entry_disparity_pct({s.max_entry_disparity_pct})는 "
+            f"entry_threshold_pct({s.entry_threshold_pct})보다 커야 합니다. "
+            "그렇지 않으면 진입 가능한 괴리 구간이 존재하지 않습니다."
+        )
 
     if u.max_watchlist_size * 2 > 41:
         raise ConfigError(

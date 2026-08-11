@@ -54,6 +54,7 @@ def make_cfg(**signal_overrides) -> Config:
         force_exit_time="14:50",
         force_exit_daily=True,
         disaster_alert_pct=3.0,
+        max_entry_disparity_pct=3.0,
     )
     sig.update(signal_overrides)
     risk_overrides = sig.pop("_risk", {})
@@ -243,6 +244,22 @@ class TestEntryGates:
         # -0.3% > -0.5% threshold -> no entry
         d = entry(snap=make_snap(ask1=9_970))
         assert d == NoAction("disparity_above_threshold")
+
+    def test_implausibly_deep_disparity_is_refused(self):
+        # -3.5%: 기회가 아니라 데이터 이상(NAV 오류)으로 보고 진입 거부.
+        d = entry(snap=make_snap(ask1=9_650))
+        assert d == NoAction("disparity_implausible")
+
+    def test_disparity_exactly_at_implausible_bound_passes(self):
+        # 경계 -3.0%는 통과(임계값 경계와 같은 관례: 딱 걸치면 허용).
+        d = entry(snap=make_snap(ask1=9_700))
+        assert isinstance(d, EnterSignal)
+
+    def test_implausible_disparity_resets_debounce(self):
+        # 확인 상태를 유지하면 안 됨 - 검증 가능한 조건이 아니다.
+        tr = confirmed_tracker()
+        entry(snap=make_snap(ask1=9_650), tracker=tr)
+        assert tr.peek("233740") is None
 
     def test_disparity_exactly_at_threshold_passes(self):
         # -0.5% == -theta passes the <= comparison
