@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from datetime import time as dtime
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -53,6 +54,15 @@ class SignalsConfig:
     force_exit_days: int   # trading days
     force_exit_time: str   # "HH:MM"
     disaster_alert_pct: float
+    # 진입 괴리 하한(안전장치): 이보다 더 깊은 괴리는 기회가 아니라 데이터
+    # 이상으로 보고 진입 거부(disparity_implausible). NAV 피드가 종일 틀렸던
+    # 실측 사례(0080Y0 2026-07-28) 대비 - 사후 탐지가 아니라 단일 틱만으로
+    # 진입 전에 막는 것이 핵심.
+    max_entry_disparity_pct: float = 3.0
+    # 매일 force_exit_time에 보유 전량 강제청산(오버나이트 캐리 제거). 켜면
+    # force_exit_days(기한)는 15:00에 다 못 판 잔량이 다음날로 넘어간 극단
+    # 케이스의 백스톱으로만 남는다. 끄면 기한 청산만 하는 구 동작.
+    force_exit_daily: bool = True
 
 
 @dataclass(frozen=True)
@@ -89,13 +99,14 @@ class Config:
     execution: ExecutionConfig
 
 
-def _parse_hhmm(value: str, field: str) -> None:
+def _parse_hhmm(value: str, field: str) -> dtime:
     parts = value.split(":")
     if len(parts) != 2 or not all(p.isdigit() for p in parts):
         raise ConfigError(f"{field}: 'HH:MM' 형식이어야 합니다 (입력값: {value!r})")
     h, m = int(parts[0]), int(parts[1])
     if not (0 <= h <= 23 and 0 <= m <= 59):
         raise ConfigError(f"{field}: 시각 범위가 잘못되었습니다 (입력값: {value!r})")
+    return dtime(h, m)
 
 
 def load_config(path: Path | None = None) -> Config:
@@ -143,6 +154,10 @@ def load_config(path: Path | None = None) -> Config:
                 force_exit_days=int(s["force_exit_days"]),
                 force_exit_time=str(s["force_exit_time"]),
                 disaster_alert_pct=float(s["disaster_alert_pct"]),
+                max_entry_disparity_pct=float(
+                    s.get("max_entry_disparity_pct", 3.0)
+                ),
+                force_exit_daily=bool(s.get("force_exit_daily", True)),
             ),
             risk=RiskConfig(
                 virtual_capital_krw=int(r["virtual_capital_krw"]),
@@ -191,6 +206,14 @@ def _validate(cfg: Config) -> None:
     if s.exit_threshold_pct >= s.entry_threshold_pct:
         raise ConfigError("exit_threshold_pct는 entry_threshold_pct보다 작아야 합니다")
 
+    # 진입 괴리 하한이 진입 임계값보다 얕으면 통과 가능한 구간이 사라진다.
+    if s.max_entry_disparity_pct <= s.entry_threshold_pct:
+        raise ConfigError(
+            f"max_entry_disparity_pct({s.max_entry_disparity_pct})는 "
+            f"entry_threshold_pct({s.entry_threshold_pct})보다 커야 합니다. "
+            "그렇지 않으면 진입 가능한 괴리 구간이 존재하지 않습니다."
+        )
+
     if u.max_watchlist_size * 2 > 41:
         raise ConfigError(
             f"max_watchlist_size({u.max_watchlist_size})가 너무 큽니다: "
@@ -225,8 +248,20 @@ def _validate(cfg: Config) -> None:
             "초과합니다 (동시 최대포지션 자본 안전장치)"
         )
 
-    for field_name in ("no_entry_before", "no_entry_after", "force_exit_time"):
-        _parse_hhmm(getattr(s, field_name), field_name)
+    times = {
+        field_name: _parse_hhmm(getattr(s, field_name), field_name)
+        for field_name in ("no_entry_before", "no_entry_after", "force_exit_time")
+    }
+
+    # 일일 강제청산을 켜면 진입 마감이 청산 시각보다 늦으면 안 된다. 늦으면
+    # 그 사이에 잡은 포지션이 다음 틱에 곧바로 플러시돼 왕복 수수료만 나간다.
+    if s.force_exit_daily and times["no_entry_after"] > times["force_exit_time"]:
+        raise ConfigError(
+            f"force_exit_daily=true인데 no_entry_after({s.no_entry_after})가 "
+            f"force_exit_time({s.force_exit_time})보다 늦습니다. 진입 직후 곧바로 "
+            "강제청산되는 무의미한 거래가 발생하므로 no_entry_after를 "
+            "force_exit_time 이하로 설정하세요."
+        )
 
     if s.force_exit_days < 1:
         raise ConfigError("force_exit_days는 1 이상이어야 합니다")

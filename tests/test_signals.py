@@ -52,7 +52,9 @@ def make_cfg(**signal_overrides) -> Config:
         no_entry_after="15:00",
         force_exit_days=5,
         force_exit_time="14:50",
+        force_exit_daily=True,
         disaster_alert_pct=3.0,
+        max_entry_disparity_pct=3.0,
     )
     sig.update(signal_overrides)
     risk_overrides = sig.pop("_risk", {})
@@ -242,6 +244,22 @@ class TestEntryGates:
         # -0.3% > -0.5% threshold -> no entry
         d = entry(snap=make_snap(ask1=9_970))
         assert d == NoAction("disparity_above_threshold")
+
+    def test_implausibly_deep_disparity_is_refused(self):
+        # -3.5%: 기회가 아니라 데이터 이상(NAV 오류)으로 보고 진입 거부.
+        d = entry(snap=make_snap(ask1=9_650))
+        assert d == NoAction("disparity_implausible")
+
+    def test_disparity_exactly_at_implausible_bound_passes(self):
+        # 경계 -3.0%는 통과(임계값 경계와 같은 관례: 딱 걸치면 허용).
+        d = entry(snap=make_snap(ask1=9_700))
+        assert isinstance(d, EnterSignal)
+
+    def test_implausible_disparity_resets_debounce(self):
+        # 확인 상태를 유지하면 안 됨 - 검증 가능한 조건이 아니다.
+        tr = confirmed_tracker()
+        entry(snap=make_snap(ask1=9_650), tracker=tr)
+        assert tr.peek("233740") is None
 
     def test_disparity_exactly_at_threshold_passes(self):
         # -0.5% == -theta passes the <= comparison
@@ -514,6 +532,62 @@ class TestExit:
         pos = make_position(deadline_date=date(2026, 7, 27))
         d = evaluate_exit(pos, snap, make_cfg(), at_1450)
         assert d == NoAction("force_exit_no_quote")
+
+
+# ------------------------------------------------ daily force exit (flush)
+
+class TestDailyForceExit:
+    """force_exit_daily: 기한과 무관하게 매일 force_exit_time에 전량 청산해
+    오버나이트 캐리를 구조적으로 없앤다. 픽스처의 force_exit_time은 "14:50",
+    기한(deadline)은 한참 뒤인 2026-07-27이라 '기한 때문이 아니라 일일 청산
+    때문에' 발동했음이 구분된다."""
+
+    def test_flushes_on_a_non_deadline_day(self):
+        # 진입 당일(07-20), 기한은 07-27로 멀었지만 14:50이 되면 청산.
+        at_1450 = datetime(2026, 7, 20, 14, 50, 0)
+        snap = make_snap(bid1=9_985, now_epoch=at_1450.timestamp())
+        pos = make_position(deadline_date=date(2026, 7, 27))
+        d = evaluate_exit(pos, snap, make_cfg(), at_1450)
+        assert isinstance(d, ExitSignal)
+        assert d.reason == "force_exit"
+        assert d.qty == pos.qty            # 전량
+        assert d.limit_price == 9_985      # bid에 던짐
+
+    def test_not_yet_one_second_before(self):
+        # 경계: 14:49:59에는 아직 평상시 청산 규칙만 적용된다.
+        at_1449 = datetime(2026, 7, 20, 14, 49, 59)
+        snap = make_snap(bid1=9_985, now_epoch=at_1449.timestamp())
+        pos = make_position(deadline_date=date(2026, 7, 27))
+        d = evaluate_exit(pos, snap, make_cfg(), at_1449)
+        assert d == NoAction("exit_disparity_below")
+
+    def test_disabled_flag_restores_deadline_only_behavior(self):
+        # force_exit_daily=False면 기한 전엔 시각과 무관하게 강제청산 없음.
+        at_1450 = datetime(2026, 7, 20, 14, 50, 0)
+        snap = make_snap(bid1=9_985, now_epoch=at_1450.timestamp())
+        pos = make_position(deadline_date=date(2026, 7, 27))
+        cfg = make_cfg(force_exit_daily=False)
+        d = evaluate_exit(pos, snap, cfg, at_1450)
+        assert d == NoAction("exit_disparity_below")
+
+    def test_flush_ignores_staleness_and_auction(self):
+        # 일일 청산도 기한 청산과 똑같이 신선도/정규장 게이트를 무시한다
+        # (마감 전에 반드시 털어야 하므로 데이터 품질보다 청산이 우선).
+        at_1450 = datetime(2026, 7, 20, 14, 50, 0)
+        snap = make_snap(
+            nav_age=600.0, quote_age=600.0, hour_cls_code="A",
+            now_epoch=at_1450.timestamp(),
+        )
+        pos = make_position(deadline_date=date(2026, 7, 27))
+        d = evaluate_exit(pos, snap, make_cfg(), at_1450)
+        assert isinstance(d, ExitSignal)
+        assert d.reason == "force_exit"
+
+    def test_normal_exit_still_wins_before_flush_time(self):
+        # 괴리가 해소되면 강제청산 시각 전에 정상 청산으로 나간다(회귀 방지).
+        d = evaluate_exit(make_position(), make_snap(bid1=9_995), make_cfg(), NOW)
+        assert isinstance(d, ExitSignal)
+        assert d.reason == "exit"
 
 
 # ---------------------------------------------------------------- disaster

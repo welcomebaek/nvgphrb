@@ -24,13 +24,15 @@
     "no_entry_before": "09:05",
     "no_entry_after": "15:00",
     "force_exit_days": 5,
-    "force_exit_time": "14:50",
-    "disaster_alert_pct": 3.0
+    "force_exit_time": "15:00",
+    "force_exit_daily": true,
+    "disaster_alert_pct": 3.0,
+    "max_entry_disparity_pct": 3.0
   },
   "risk": {
     "virtual_capital_krw": 8500000,
     "max_positions": 4,
-    "max_entries_per_day": 6,
+    "max_entries_per_day": 30,
     "cooldown_minutes": 60,
     "min_alloc_per_position_krw": 1000000,
     "max_alloc_per_position_krw": 2000000
