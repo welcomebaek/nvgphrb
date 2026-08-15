@@ -242,10 +242,16 @@ def _validate(cfg: Config) -> None:
             "min_alloc_per_position_krw는 max_alloc_per_position_krw보다 클 수 없습니다 "
             f"({r.min_alloc_per_position_krw} > {r.max_alloc_per_position_krw})"
         )
-    if r.max_alloc_per_position_krw * r.max_positions > r.virtual_capital_krw * 1.05:
+    # (구) max_alloc x max_positions <= capital*1.05 검증은 "모든 포지션이
+    # 동시에 max_alloc까지 꽉 찬다"는 캐피털/n 시절 워스트케이스를 가정했다.
+    # 지금 사이징은 capital_cap = min(max_alloc, 남은현금)으로 이미 현금이
+    # 실제 총 노출을 자동 제한하므로(2026-08-15 실측: max_positions에 막힌
+    # 시점 현금은 항상 자본의 10~50%대), max_positions와 곱하는 건 불필요한
+    # 이중 제약이었다. 개별 배분 상한 자체만 자본을 넘지 않으면 충분하다.
+    if r.max_alloc_per_position_krw > r.virtual_capital_krw * 1.05:
         raise ConfigError(
-            "max_alloc_per_position_krw x max_positions가 virtual_capital_krw(105%)를 "
-            "초과합니다 (동시 최대포지션 자본 안전장치)"
+            "max_alloc_per_position_krw가 virtual_capital_krw(105%)를 초과합니다 "
+            "(단일 포지션이 전체 자본보다 커질 수 없다는 안전장치)"
         )
 
     times = {
