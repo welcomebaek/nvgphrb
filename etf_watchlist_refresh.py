@@ -45,6 +45,10 @@ from etf_arb.spread_history import (
     load_daily_spread_medians,
     nday_ma_spread,
 )
+from etf_arb.resolution_history import (
+    exclude_for_nonresolution,
+    load_resolution_stats,
+)
 from etf_arb import universe
 from etf_intraday_sampler import SAMPLE_POOL_SIZE
 from etf_universe_select import (
@@ -99,14 +103,16 @@ def _entry_from_candidate(
     entry_eligible: bool,
     nday_ma_spread_pct: float | None = None,
     spread_days: int = 0,
+    resolution_episodes: int = 0,
+    resolution_resolved: int = 0,
 ) -> dict[str, Any]:
     """rank_survivors/blend_scores를 거친(필터 통과) 후보 -> 워치리스트 항목.
 
     entry_eligible: 신규 진입을 허용해도 되는지. 신규후보(pinned=False)는 이
-    함수 호출 전 이미 스프레드 게이트를 통과했으므로 항상 True. 보유종목
+    함수 호출 전 이미 스프레드/해소율 게이트를 통과했으므로 항상 True. 보유종목
     히스테리시스로 핀된 경우(pinned=True)는 하드필터는 통과했지만(그래서 이
-    함수로 옴) 스프레드 N일 이동평균이 상한을 넘을 수 있어 호출측이 별도로
-    계산해 전달한다 - 핀은 "청산 신호는 계속 받게" 하려는 것이지 "신규
+    함수로 옴) 스프레드 이동평균 초과 또는 구조적 비해소일 수 있어 호출측이
+    별도로 계산해 전달한다 - 핀은 "청산 신호는 계속 받게" 하려는 것이지 "신규
     진입해도 된다"는 뜻이 아니다."""
     main_stats = cand["episodes"][main_key]
     return {
@@ -118,6 +124,13 @@ def _entry_from_candidate(
         "median_spread_pct": spread,
         "nday_ma_spread_pct": nday_ma_spread_pct,
         "spread_days": spread_days,
+        "resolution_episodes": resolution_episodes,
+        "resolution_resolved": resolution_resolved,
+        "resolution_rate": (
+            resolution_resolved / resolution_episodes
+            if resolution_episodes
+            else None
+        ),
         "episodes": cand["episodes"],
         "p_resolve_within_n": main_stats["p_resolve_within_n"],
         "mean_net_edge_pct": main_stats["mean_net_edge_pct"],
@@ -175,6 +188,9 @@ def _entry_from_aggregate(
         "median_spread_pct": None,
         "nday_ma_spread_pct": None,
         "spread_days": 0,
+        "resolution_episodes": 0,
+        "resolution_resolved": 0,
+        "resolution_rate": None,
         "episodes": {f"{score_threshold_pct:g}": stats},
         "p_resolve_within_n": stats["p_resolve_within_n"],
         "mean_net_edge_pct": stats["mean_net_edge_pct"],
@@ -201,6 +217,9 @@ def _entry_from_previous(prev: dict[str, Any]) -> dict[str, Any]:
         "median_spread_pct": None,
         "nday_ma_spread_pct": prev.get("nday_ma_spread_pct"),
         "spread_days": int(prev.get("spread_days") or 0),
+        "resolution_episodes": int(prev.get("resolution_episodes") or 0),
+        "resolution_resolved": int(prev.get("resolution_resolved") or 0),
+        "resolution_rate": prev.get("resolution_rate"),
         "episodes": prev.get("episodes", {}),
         "p_resolve_within_n": prev.get("p_resolve_within_n"),
         "mean_net_edge_pct": prev.get("mean_net_edge_pct"),
@@ -226,6 +245,9 @@ def _bare_stub(code: str) -> dict[str, Any]:
         "median_spread_pct": None,
         "nday_ma_spread_pct": None,
         "spread_days": 0,
+        "resolution_episodes": 0,
+        "resolution_resolved": 0,
+        "resolution_rate": None,
         "episodes": {},
         "p_resolve_within_n": None,
         "mean_net_edge_pct": None,
@@ -398,11 +420,31 @@ def main() -> int:
             return None, 0
         return result
 
+    # 5c) 당일 해소율 이력 -> 종목별 (에피소드수, 해소수) (장전 해소율 필터의 재료).
+    # 샘플러 askp1/bidp1/nav로 최근 resolution_lookback_days일 에피소드를 ask/bid
+    # 비대칭으로 재구성해, 구조적으로 당일 수렴하지 않는 종목을 걸러낸다. 진입
+    # 시그널과 동일 시간창/임계값을 쓴다.
+    resolution_stats = load_resolution_stats(
+        lookback_days=ucfg.resolution_lookback_days,
+        today=today,
+        window=sample_window,
+        entry_threshold_pct=cfg.signals.entry_threshold_pct,
+        exit_threshold_pct=cfg.signals.exit_threshold_pct,
+        max_entry_disparity_pct=cfg.signals.max_entry_disparity_pct,
+    )
+
+    def _resolution_for(code: str) -> tuple[int, int]:
+        return resolution_stats.get(code, (0, 0))
+
     def _spread_fields(code: str) -> dict[str, Any]:
         ma, n_days = _spread_ma_for(code)
+        n_ep, n_res = _resolution_for(code)
         return {
             "nday_ma_spread_pct": round(ma, 4) if ma is not None else None,
             "spread_days": n_days,
+            "resolution_episodes": n_ep,
+            "resolution_resolved": n_res,
+            "resolution_rate": (n_res / n_ep) if n_ep else None,
         }
 
     n_spread_codes = len(spread_medians)
@@ -410,6 +452,12 @@ def main() -> int:
         f"[스프레드 이력] 저널(최근 {ucfg.spread_lookback_days}일) 스프레드 보유 "
         f"{n_spread_codes}종목 (일별 중앙값 -> {ucfg.spread_lookback_days}일 이동평균, "
         f"상한 {ucfg.max_spread_pct}%, 최소 {ucfg.spread_min_days}일 필요)"
+    )
+    print(
+        f"[해소율 이력] 저널(최근 {ucfg.resolution_lookback_days}일) 에피소드 보유 "
+        f"{len(resolution_stats)}종목 (ask/bid 재구성, 최소 "
+        f"{ucfg.resolution_min_episodes}에피소드, 해소율 하한 "
+        f"{ucfg.min_resolution_rate:.0%})"
     )
 
     # 6) 점수 합성 (백분위 정규화 blend)
@@ -455,17 +503,23 @@ def main() -> int:
         if code in blended_by_code:
             _ma, _n_days = _spread_ma_for(code)
             # 하드필터는 blended_by_code에 있다는 사실 자체로 이미 통과했으므로
-            # 남은 변수는 스프레드뿐 - 신규후보와 동일한 exclude_for_spread로
-            # 판정하되(오펀 방지 목적상) 워치리스트에서 배제하지는 않고 신규
-            # 진입 자격만 결정한다.
+            # 남은 변수는 스프레드/해소율뿐 - 신규후보와 동일한 게이트로 판정하되
+            # (오펀 방지 목적상) 워치리스트에서 배제하지는 않고 신규 진입 자격만
+            # 결정한다. 둘 중 하나라도 걸리면 entry_eligible=false.
             _spread_excluded = exclude_for_spread(
                 _ma, _n_days, ucfg.spread_min_days, ucfg.max_spread_pct
             )
+            _n_ep, _n_res = _resolution_for(code)
+            _res_excluded = exclude_for_nonresolution(
+                _n_ep, _n_res, ucfg.resolution_min_episodes, ucfg.min_resolution_rate
+            )
             entry = _entry_from_candidate(
                 blended_by_code[code], main_key, pinned=True, spread=None,
-                entry_eligible=not _spread_excluded,
+                entry_eligible=not (_spread_excluded or _res_excluded),
                 nday_ma_spread_pct=round(_ma, 4) if _ma is not None else None,
                 spread_days=_n_days,
+                resolution_episodes=_n_ep,
+                resolution_resolved=_n_res,
             )
         elif code in aggregates:
             entry = _entry_from_aggregate(
@@ -519,6 +573,8 @@ def main() -> int:
     fresh_entries: list[dict[str, Any]] = []
     n_spread_excluded = 0      # 이동평균 스프레드 초과로 제외한 신규 후보 수
     n_spread_insufficient = 0  # 선정됐지만 이력 부족이라 이동평균 필터가 미적용된 수
+    n_res_excluded = 0         # 구조적 비해소로 제외한 신규 후보 수
+    n_res_insufficient = 0     # 선정됐지만 에피소드 부족이라 해소율 필터가 미적용된 수
 
     def _ma_spread_gate(cand: dict[str, Any]) -> tuple[bool, float | None, int]:
         """(제외여부, ma, n_days). 제외 시 사유를 출력하고 카운터를 올린다."""
@@ -533,6 +589,27 @@ def main() -> int:
             return True, ma, n_days
         return False, ma, n_days
 
+    def _nonresolution_gate(cand: dict[str, Any]) -> tuple[bool, int, int]:
+        """(제외여부, n_ep, n_res). 구조적 비해소면 제외하고 카운터/사유 출력.
+
+        스프레드 게이트보다 먼저 적용 - 당일 수렴 자체가 안 되는 종목은 스프레드가
+        좁아도 진입할 이유가 없다."""
+        nonlocal n_res_excluded, n_res_insufficient
+        n_ep, n_res = _resolution_for(cand["code"])
+        if exclude_for_nonresolution(
+            n_ep, n_res, ucfg.resolution_min_episodes, ucfg.min_resolution_rate
+        ):
+            n_res_excluded += 1
+            print(
+                f"  {cand['code']} {cand['name']}: 당일 해소율 "
+                f"{n_res}/{n_ep}={n_res / n_ep:.0%} < 하한 "
+                f"{ucfg.min_resolution_rate:.0%} -> 제외(구조적 비해소)"
+            )
+            return True, n_ep, n_res
+        if n_ep < ucfg.resolution_min_episodes:
+            n_res_insufficient += 1
+        return False, n_ep, n_res
+
     if do_spread_check:
         reason = "장중" if market_open else "강제(--force-spread-check)"
         print(
@@ -543,6 +620,9 @@ def main() -> int:
         for cand in fresh_pool:
             if len(fresh_entries) >= remaining_slots:
                 break
+            res_excl, n_ep, n_res = _nonresolution_gate(cand)
+            if res_excl:
+                continue
             excluded, ma, n_days = _ma_spread_gate(cand)
             if excluded:
                 continue
@@ -573,6 +653,8 @@ def main() -> int:
                     entry_eligible=True,
                     nday_ma_spread_pct=round(ma, 4) if ma is not None else None,
                     spread_days=n_days,
+                    resolution_episodes=n_ep,
+                    resolution_resolved=n_res,
                 )
             )
     else:
@@ -584,6 +666,9 @@ def main() -> int:
         for cand in fresh_pool:
             if len(fresh_entries) >= remaining_slots:
                 break
+            res_excl, n_ep, n_res = _nonresolution_gate(cand)
+            if res_excl:
+                continue
             excluded, ma, n_days = _ma_spread_gate(cand)
             if excluded:
                 continue
@@ -595,6 +680,8 @@ def main() -> int:
                     entry_eligible=True,
                     nday_ma_spread_pct=round(ma, 4) if ma is not None else None,
                     spread_days=n_days,
+                    resolution_episodes=n_ep,
+                    resolution_resolved=n_res,
                 )
             )
 
@@ -602,6 +689,11 @@ def main() -> int:
         f"[스프레드 필터 요약] N일({ucfg.spread_lookback_days}) 이동평균 > "
         f"{ucfg.max_spread_pct}% 초과로 신규 후보 {n_spread_excluded}종목 제외, "
         f"스프레드 이력 부족(< {ucfg.spread_min_days}일)으로 미적용 {n_spread_insufficient}종목"
+    )
+    print(
+        f"[해소율 필터 요약] 당일 해소율 < {ucfg.min_resolution_rate:.0%}로 신규 후보 "
+        f"{n_res_excluded}종목 제외(구조적 비해소), 에피소드 부족"
+        f"(< {ucfg.resolution_min_episodes})으로 미적용 {n_res_insufficient}종목"
     )
 
     final_tickers = held_entries + fresh_entries

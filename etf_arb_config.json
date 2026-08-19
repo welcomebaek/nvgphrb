@@ -13,7 +13,10 @@
     "intraday_lookback_days": 10,
     "intraday_deadline_minutes": 60.0,
     "spread_lookback_days": 5,
-    "spread_min_days": 2
+    "spread_min_days": 2,
+    "resolution_lookback_days": 20,
+    "resolution_min_episodes": 10,
+    "min_resolution_rate": 0.15
   },
   "signals": {
     "entry_threshold_pct": 0.5,

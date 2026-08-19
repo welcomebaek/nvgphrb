@@ -15,13 +15,36 @@ import pytest
 from etf_arb.config import DEFAULT_CONFIG_PATH, ConfigError, load_config
 
 
-def _write_variant(tmp_path: Path, **signal_overrides) -> Path:
-    """실제 config를 베이스로 signals 섹션만 덮어쓴 사본을 만든다."""
+def _write_variant(
+    tmp_path: Path, universe: dict | None = None, **signal_overrides
+) -> Path:
+    """실제 config를 베이스로 signals(+선택적 universe) 섹션을 덮어쓴 사본."""
     raw = json.loads(DEFAULT_CONFIG_PATH.read_text(encoding="utf-8"))
     raw["signals"].update(signal_overrides)
+    if universe:
+        raw["universe"].update(universe)
     path = tmp_path / "cfg.json"
     path.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
     return path
+
+
+def test_resolution_filter_defaults_load():
+    u = load_config().universe
+    assert u.resolution_lookback_days == 20
+    assert u.resolution_min_episodes == 10
+    assert u.min_resolution_rate == 0.15
+
+
+def test_min_resolution_rate_out_of_range_rejected(tmp_path):
+    path = _write_variant(tmp_path, universe={"min_resolution_rate": 1.5})
+    with pytest.raises(ConfigError, match="min_resolution_rate"):
+        load_config(path)
+
+
+def test_resolution_min_episodes_must_be_positive(tmp_path):
+    path = _write_variant(tmp_path, universe={"resolution_min_episodes": 0})
+    with pytest.raises(ConfigError, match="resolution_min_episodes"):
+        load_config(path)
 
 
 def test_real_config_loads():

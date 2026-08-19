@@ -40,6 +40,13 @@ class UniverseConfig:
     # max_spread_pct를 초과하는 구조적 고스프레드 종목을 워치리스트에서 제외.
     spread_lookback_days: int = 5
     spread_min_days: int = 2
+    # 당일 해소율 필터 (장전 리프레셔용): 샘플러 askp1/bidp1/nav로 최근
+    # resolution_lookback_days일 에피소드를 재구성해, 에피소드가
+    # resolution_min_episodes 이상이면서 당일 해소율이 min_resolution_rate 미만인
+    # "구조적 비해소" 종목을 워치리스트에서 제외 (강제청산 손실의 근본 원인 차단).
+    resolution_lookback_days: int = 20
+    resolution_min_episodes: int = 10
+    min_resolution_rate: float = 0.15
 
 
 @dataclass(frozen=True)
@@ -142,6 +149,13 @@ def load_config(path: Path | None = None) -> Config:
                 intraday_deadline_minutes=float(u["intraday_deadline_minutes"]),
                 spread_lookback_days=int(u.get("spread_lookback_days", 5)),
                 spread_min_days=int(u.get("spread_min_days", 2)),
+                resolution_lookback_days=int(
+                    u.get("resolution_lookback_days", 20)
+                ),
+                resolution_min_episodes=int(
+                    u.get("resolution_min_episodes", 10)
+                ),
+                min_resolution_rate=float(u.get("min_resolution_rate", 0.15)),
             ),
             signals=SignalsConfig(
                 entry_threshold_pct=float(s["entry_threshold_pct"]),
@@ -235,6 +249,12 @@ def _validate(cfg: Config) -> None:
             "spread_min_days는 1 이상 spread_lookback_days 이하여야 합니다 "
             f"({u.spread_min_days}, spread_lookback_days={u.spread_lookback_days})"
         )
+    if u.resolution_lookback_days < 1:
+        raise ConfigError("resolution_lookback_days는 1 이상이어야 합니다")
+    if u.resolution_min_episodes < 1:
+        raise ConfigError("resolution_min_episodes는 1 이상이어야 합니다")
+    if not (0.0 <= u.min_resolution_rate <= 1.0):
+        raise ConfigError("min_resolution_rate는 0.0~1.0 범위여야 합니다")
 
     # 호가창 유동성 기반 사이징 안전장치.
     if r.min_alloc_per_position_krw > r.max_alloc_per_position_krw:
