@@ -34,7 +34,7 @@
   },
   "risk": {
     "virtual_capital_krw": 8500000,
-    "max_positions": 4,
+    "max_positions": 8,
     "max_entries_per_day": 30,
     "cooldown_minutes": 60,
     "min_alloc_per_position_krw": 1000000,
