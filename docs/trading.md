@@ -288,6 +288,9 @@ cap_qty     = capital_cap // ask1
 | `intraday_deadline_minutes` | 60 | 장중 에피소드 해소 기한(분) |
 | `spread_lookback_days` | 5 | 스프레드 이동평균 일수(N) |
 | `spread_min_days` | 2 | 스프레드 필터 적용 최소 이력 일수 |
+| `resolution_lookback_days` | 20 | 당일 해소율 에피소드 조회 일수 |
+| `resolution_min_episodes` | 10 | 해소율 필터 적용 최소 에피소드 수 |
+| `min_resolution_rate` | 0.15 | 당일 해소율 하한 — 미만이면 구조적 비해소로 제외 |
 
 ### `signals` — 시그널 규칙
 
