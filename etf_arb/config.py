@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from datetime import date, datetime, timedelta
 from datetime import time as dtime
 from pathlib import Path
 
@@ -70,6 +71,17 @@ class SignalsConfig:
     # force_exit_days(기한)는 15:00에 다 못 판 잔량이 다음날로 넘어간 극단
     # 케이스의 백스톱으로만 남는다. 끄면 기한 청산만 하는 구 동작.
     force_exit_daily: bool = True
+    # 강제청산까지 남은 "수렴 활주로" 최소치(분). force_exit_daily일 때만 적용.
+    # 실효 진입 마감 = min(no_entry_after, force_exit_time - min_runway_minutes).
+    # 근거(2026-08-28 실측, 152 에피소드): 잔여 60분 이상이면 정상 수렴률이
+    # 82~86%로 안정적인데, 60분 미만에서 30%로 붕괴한다(n=10, 평균 -25,094원).
+    # 진입 마감 컷오프 스윕에서도 12:30->14:30까지 평균/중앙값/승률/강제청산률이
+    # 모두 단조 악화 - 파라미터 노이즈가 아니라 진입창과 청산 시각이 겹쳐
+    # 활주로 없이 이륙시키는 구조적 결함이다. no_entry_after를 직접 당기지
+    # 않는 이유는 그 값이 샘플러 수집 창과 해소율 통계 창으로도 재사용되어
+    # (etf_intraday_sampler.py / etf_watchlist_refresh.py) 14:00~15:00
+    # 데이터가 통째로 끊기기 때문.
+    min_runway_minutes: int = 60
 
 
 @dataclass(frozen=True)
@@ -172,6 +184,7 @@ def load_config(path: Path | None = None) -> Config:
                     s.get("max_entry_disparity_pct", 3.0)
                 ),
                 force_exit_daily=bool(s.get("force_exit_daily", True)),
+                min_runway_minutes=int(s.get("min_runway_minutes", 60)),
             ),
             risk=RiskConfig(
                 virtual_capital_krw=int(r["virtual_capital_krw"]),
@@ -288,6 +301,26 @@ def _validate(cfg: Config) -> None:
             "강제청산되는 무의미한 거래가 발생하므로 no_entry_after를 "
             "force_exit_time 이하로 설정하세요."
         )
+
+    # 활주로 게이트: 실효 진입 마감을 force_exit_time에서 min_runway_minutes만큼
+    # 앞당긴다. no_entry_after(하드 상한)는 그대로 두고 안쪽에서만 좁히므로,
+    # 이 값이 진입창 전체를 삼켜버리면(= 실효 마감이 no_entry_before보다 이르면)
+    # 진입이 영원히 불가능해지는 설정 실수라 로드 시점에 막는다.
+    if s.min_runway_minutes < 0:
+        raise ConfigError(
+            f"min_runway_minutes는 0 이상이어야 합니다 (입력값: {s.min_runway_minutes})"
+        )
+    if s.force_exit_daily:
+        cutoff = (
+            datetime.combine(date.min, times["force_exit_time"])
+            - timedelta(minutes=s.min_runway_minutes)
+        ).time()
+        if cutoff <= times["no_entry_before"]:
+            raise ConfigError(
+                f"min_runway_minutes({s.min_runway_minutes})가 너무 큽니다: 실효 "
+                f"진입 마감({cutoff.strftime('%H:%M')})이 no_entry_before"
+                f"({s.no_entry_before}) 이하가 되어 진입창이 사라집니다."
+            )
 
     if s.force_exit_days < 1:
         raise ConfigError("force_exit_days는 1 이상이어야 합니다")
