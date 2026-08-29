@@ -76,6 +76,37 @@ def test_entry_window_equal_to_force_exit_time_is_allowed(tmp_path):
     assert load_config(path).signals.no_entry_after == "15:00"
 
 
+def test_min_runway_minutes_loads_from_real_config():
+    s = load_config().signals
+    assert s.min_runway_minutes == 60
+    # 실효 진입 마감 = force_exit_time - 활주로 = 15:00 - 60분 = 14:00.
+    assert s.force_exit_time == "15:00"
+
+
+def test_negative_min_runway_rejected(tmp_path):
+    path = _write_variant(tmp_path, min_runway_minutes=-1)
+    with pytest.raises(ConfigError, match="min_runway_minutes"):
+        load_config(path)
+
+
+def test_runway_swallowing_entry_window_rejected(tmp_path):
+    # 15:00 - 600분 = 05:00 < no_entry_before(09:05) -> 진입창 소멸.
+    path = _write_variant(
+        tmp_path, force_exit_daily=True, force_exit_time="15:00",
+        no_entry_before="09:05", min_runway_minutes=600,
+    )
+    with pytest.raises(ConfigError, match="min_runway_minutes"):
+        load_config(path)
+
+
+def test_runway_not_validated_when_daily_force_exit_off(tmp_path):
+    # 다중일 모드에선 게이트가 꺼지므로 큰 값이어도 설정 오류가 아니다.
+    path = _write_variant(
+        tmp_path, force_exit_daily=False, min_runway_minutes=600
+    )
+    assert load_config(path).signals.min_runway_minutes == 600
+
+
 def test_entry_disparity_ceiling_must_exceed_threshold(tmp_path):
     # 하한이 임계값보다 얕으면 진입 가능한 구간이 사라진다.
     path = _write_variant(

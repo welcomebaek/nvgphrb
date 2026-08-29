@@ -29,6 +29,7 @@
     "force_exit_days": 5,
     "force_exit_time": "15:00",
     "force_exit_daily": true,
+    "min_runway_minutes": 60,
     "disaster_alert_pct": 3.0,
     "max_entry_disparity_pct": 3.0
   },

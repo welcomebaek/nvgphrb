@@ -134,6 +134,15 @@ def _hhmm(value: str) -> dtime:
     return dtime(int(h), int(m))
 
 
+def _as_minutes(t: dtime) -> float:
+    return t.hour * 60 + t.minute + t.second / 60 + t.microsecond / 6e7
+
+
+def _minutes_between(start: dtime, end: dtime) -> float:
+    """end - start, in minutes. Negative once start is past end."""
+    return _as_minutes(end) - _as_minutes(start)
+
+
 # ---------------------------------------------------------------- entry
 
 def evaluate_entry(
@@ -173,6 +182,16 @@ def evaluate_entry(
     if t > _hhmm(s.no_entry_after):
         tracker.reset(code)
         return NoAction("after_entry_window")
+    # 수렴 활주로: 당일 강제청산까지 min_runway_minutes보다 적게 남았으면 진입
+    # 금지. 괴리 수렴은 중앙값 20분이지만 꼬리가 길어, 잔여가 60분 밑으로
+    # 떨어지면 정상 수렴률이 82~86% -> 30%로 무너지고 나머지는 15:00에 시장가로
+    # 끌려나간다(2026-08-28 실측). no_entry_after는 하드 상한으로 남겨두고 그
+    # 안쪽만 좁히므로 이 게이트가 사유를 가로채지 않도록 순서상 뒤에 둔다.
+    if s.force_exit_daily:
+        runway = _minutes_between(t, _hhmm(s.force_exit_time))
+        if runway < s.min_runway_minutes:
+            tracker.reset(code)
+            return NoAction("insufficient_runway")
 
     # -- session / freshness ------------------------------------------------
     if snapshot.hour_cls_code != REGULAR_SESSION_CODE:

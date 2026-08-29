@@ -224,6 +224,43 @@ class TestEntryGates:
         d = entry(snap=make_snap(now_epoch=late.timestamp()), now=late)
         assert d == NoAction("after_entry_window")
 
+    def test_insufficient_runway_blocks_entry(self):
+        # force_exit_time 14:50 - min_runway 60분 => 실효 진입 마감 13:50.
+        # 13:50 이후 진입은 수렴 활주로가 부족해 강제청산으로 끌려간다.
+        late = datetime(2026, 7, 20, 14, 0, 0)
+        d = entry(snap=make_snap(now_epoch=late.timestamp()), now=late)
+        assert d == NoAction("insufficient_runway")
+
+    def test_exact_runway_boundary_allows_entry(self):
+        # 잔여가 정확히 min_runway_minutes면 통과(경계 포함).
+        at_1350 = datetime(2026, 7, 20, 13, 50, 0)
+        d = entry(snap=make_snap(now_epoch=at_1350.timestamp()), now=at_1350)
+        assert isinstance(d, EnterSignal)
+
+    def test_one_second_past_runway_boundary_blocks(self):
+        at_1350_01 = datetime(2026, 7, 20, 13, 50, 1)
+        d = entry(snap=make_snap(now_epoch=at_1350_01.timestamp()), now=at_1350_01)
+        assert d == NoAction("insufficient_runway")
+
+    def test_runway_gate_inactive_without_daily_force_exit(self):
+        # 다중일 모드에선 활주로가 '일' 단위라 당일 잔여시간 게이트가 무의미.
+        cfg = make_cfg(force_exit_daily=False)
+        late = datetime(2026, 7, 20, 14, 0, 0)
+        d = entry(snap=make_snap(now_epoch=late.timestamp()), now=late, cfg=cfg)
+        assert isinstance(d, EnterSignal)
+
+    def test_zero_runway_preserves_legacy_behaviour(self):
+        cfg = make_cfg(min_runway_minutes=0)
+        at_1449 = datetime(2026, 7, 20, 14, 49, 0)
+        d = entry(snap=make_snap(now_epoch=at_1449.timestamp()), now=at_1449, cfg=cfg)
+        assert isinstance(d, EnterSignal)
+
+    def test_no_entry_after_takes_precedence_over_runway(self):
+        # 하드 상한(no_entry_after)이 먼저 걸려야 사유가 뒤바뀌지 않는다.
+        late = datetime(2026, 7, 20, 15, 0, 1)
+        d = entry(snap=make_snap(now_epoch=late.timestamp()), now=late)
+        assert d == NoAction("after_entry_window")
+
     def test_not_regular_session(self):
         d = entry(snap=make_snap(hour_cls_code="A"))
         assert d == NoAction("not_regular_session")

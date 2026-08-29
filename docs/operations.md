@@ -84,6 +84,9 @@ uv run etf_arb_report.py              # 손익/통계 리포트
 - **주요 스킵 사유**: `disparity_above_threshold`(그냥 임계값 미달, 정상), `before_entry_window`,
   `not_regular_session`(동시호가 차단), `quote_stale`/`nav_stale`(신선도), `cooldown`,
   `max_positions`, `book_too_thin_effective`(호가 얇아 실효괴리 미달), `exit_disparity_below`.
+  - `insufficient_runway`는 **14:00 이후 전 종목에서 정상적으로 뜬다** — 강제청산까지 활주로
+    (`min_runway_minutes`=60분)가 부족해 신규 진입을 막는 것이며 장애가 아니다. 14:00 이전에
+    이 사유가 보이면 `force_exit_time`/`min_runway_minutes` 설정을 확인할 것.
 
 ## 복구 / 재시작
 
