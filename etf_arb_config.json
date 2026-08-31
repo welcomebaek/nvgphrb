@@ -16,7 +16,8 @@
     "spread_min_days": 2,
     "resolution_lookback_days": 20,
     "resolution_min_episodes": 10,
-    "min_resolution_rate": 0.15
+    "min_resolution_rate": 0.30,
+    "resolution_entry_threshold_pct": 0.3
   },
   "signals": {
     "entry_threshold_pct": 0.5,

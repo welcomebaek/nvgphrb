@@ -37,7 +37,40 @@ def test_resolution_filter_defaults_load():
     u = load_config().universe
     assert u.resolution_lookback_days == 20
     assert u.resolution_min_episodes == 10
-    assert u.min_resolution_rate == 0.15
+    assert u.min_resolution_rate == 0.30
+
+
+def test_resolution_entry_threshold_decoupled_from_live_threshold():
+    """등급용 임계값은 실거래 진입 임계값보다 얕게 잡는다.
+
+    갭이 닫히는 성향은 종목의 LP 호가 운영에서 나오는 성질이라 얕은 갭에서도
+    드러나는 반면, 실거래 임계값(0.5%)은 왕복 비용을 넘겨야 한다는 별개의
+    경제성 제약이다. 둘을 묶어두면 진입 기회가 드문 종목은 등급도 못 매긴다.
+    """
+    cfg = load_config()
+    assert cfg.universe.resolution_entry_threshold_pct == 0.3
+    assert cfg.signals.entry_threshold_pct == 0.5
+    assert cfg.universe.resolution_entry_threshold_pct < cfg.signals.entry_threshold_pct
+
+
+def test_min_resolution_rate_floor_is_thirty_percent():
+    assert load_config().universe.min_resolution_rate == 0.30
+
+
+def test_resolution_entry_threshold_must_be_positive(tmp_path):
+    path = _write_variant(tmp_path, universe={"resolution_entry_threshold_pct": 0.0})
+    with pytest.raises(ConfigError, match="resolution_entry_threshold_pct"):
+        load_config(path)
+
+
+def test_resolution_entry_threshold_below_implausible_cap(tmp_path):
+    # 등급 임계값이 이상치 상한 이상이면 에피소드가 하나도 안 잡힌다.
+    path = _write_variant(
+        tmp_path, max_entry_disparity_pct=3.0,
+        universe={"resolution_entry_threshold_pct": 3.0},
+    )
+    with pytest.raises(ConfigError, match="resolution_entry_threshold_pct"):
+        load_config(path)
 
 
 def test_min_resolution_rate_out_of_range_rejected(tmp_path):

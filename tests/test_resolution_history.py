@@ -197,3 +197,43 @@ def test_boundary_rate_equal_floor_is_kept():
 
 def test_zero_episodes_never_excluded():
     assert exclude_for_nonresolution(0, 0, min_episodes=10, min_resolution_rate=0.15) is False
+
+
+# --- grading threshold decoupled from the live entry threshold -------------
+
+def test_shallow_grading_threshold_finds_episodes_deep_one_misses(tmp_path):
+    """등급 임계값을 낮추면 실거래 임계값이 못 보는 종목도 등급이 매겨진다.
+
+    괴리가 -0.35%까지만 벌어지는 종목은 진입(-0.5%) 기준으론 에피소드가 0이라
+    영영 "이력부족"으로 관대 통과한다. 같은 데이터를 -0.3%로 재면 해소 성향을
+    측정할 수 있다 - 커버리지 문제의 해법(2026-08-31 실측: 등급 가능 종목x일
+    43% -> 64%, 익일 수렴률 단조성 유지).
+    """
+    p = tmp_path / "s.jsonl"
+    _write(p, [
+        # nav 1000, ask 996.5 -> ask_disp -0.35%: -0.5 기준 미달, -0.3 기준 개시
+        _rec("2026-08-19T09:10:00", "TIGHT", 996.5, 996, 1000),
+        _rec("2026-08-19T09:20:00", "TIGHT", 1000, 1000, 1000),   # bid_disp 0% -> 해소
+    ])
+    assert "TIGHT" not in _load(p)                       # 0.5% 기준: 에피소드 없음
+    shallow = load_resolution_stats(
+        path=p, lookback_days=30, today=TODAY,
+        entry_threshold_pct=0.3, exit_threshold_pct=EXIT,
+        max_entry_disparity_pct=MAXDISP,
+    )
+    assert shallow["TIGHT"] == (1, 1)                    # 0.3% 기준: 해소 1건
+
+
+def test_shallow_grading_still_detects_nonresolution(tmp_path):
+    """얕게 재도 '안 닫히는' 종목은 그대로 미해소로 잡혀야 한다."""
+    p = tmp_path / "s.jsonl"
+    _write(p, [
+        _rec("2026-08-19T09:10:00", "STUCK", 996.5, 996, 1000),
+        _rec("2026-08-19T09:20:00", "STUCK", 996.0, 995, 1000),   # bid_disp -0.5%: 미해소
+    ])
+    shallow = load_resolution_stats(
+        path=p, lookback_days=30, today=TODAY,
+        entry_threshold_pct=0.3, exit_threshold_pct=EXIT,
+        max_entry_disparity_pct=MAXDISP,
+    )
+    assert shallow["STUCK"] == (1, 0)

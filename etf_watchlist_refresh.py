@@ -422,13 +422,16 @@ def main() -> int:
 
     # 5c) 당일 해소율 이력 -> 종목별 (에피소드수, 해소수) (장전 해소율 필터의 재료).
     # 샘플러 askp1/bidp1/nav로 최근 resolution_lookback_days일 에피소드를 ask/bid
-    # 비대칭으로 재구성해, 구조적으로 당일 수렴하지 않는 종목을 걸러낸다. 진입
-    # 시그널과 동일 시간창/임계값을 쓴다.
+    # 비대칭으로 재구성해, 구조적으로 당일 수렴하지 않는 종목을 걸러낸다.
+    # 시간창은 진입 시그널과 같지만 진입 임계값은 실거래(0.5%)가 아니라 더 얕은
+    # resolution_entry_threshold_pct(0.3%)를 쓴다 - 등급은 "갭이 닫히는 성향인가"를
+    # 재는 측정 문제라 왕복 비용 제약과 무관하고, 얕게 재야 진입 기회가 드문
+    # 종목도 등급이 매겨진다(커버리지 43%->64%, config.py 주석 참조).
     resolution_stats = load_resolution_stats(
         lookback_days=ucfg.resolution_lookback_days,
         today=today,
         window=sample_window,
-        entry_threshold_pct=cfg.signals.entry_threshold_pct,
+        entry_threshold_pct=ucfg.resolution_entry_threshold_pct,
         exit_threshold_pct=cfg.signals.exit_threshold_pct,
         max_entry_disparity_pct=cfg.signals.max_entry_disparity_pct,
     )
@@ -455,7 +458,8 @@ def main() -> int:
     )
     print(
         f"[해소율 이력] 저널(최근 {ucfg.resolution_lookback_days}일) 에피소드 보유 "
-        f"{len(resolution_stats)}종목 (ask/bid 재구성, 최소 "
+        f"{len(resolution_stats)}종목 (ask/bid 재구성, 등급 임계값 "
+        f"{ucfg.resolution_entry_threshold_pct}%, 최소 "
         f"{ucfg.resolution_min_episodes}에피소드, 해소율 하한 "
         f"{ucfg.min_resolution_rate:.0%})"
     )

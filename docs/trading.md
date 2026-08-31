@@ -324,7 +324,8 @@ cap_qty     = capital_cap // ask1
 | `spread_min_days` | 2 | 스프레드 필터 적용 최소 이력 일수 |
 | `resolution_lookback_days` | 20 | 당일 해소율 에피소드 조회 일수 |
 | `resolution_min_episodes` | 10 | 해소율 필터 적용 최소 에피소드 수 |
-| `min_resolution_rate` | 0.15 | 당일 해소율 하한 — 미만이면 구조적 비해소로 제외 |
+| `min_resolution_rate` | 0.30 | 당일 해소율 하한 — 미만이면 구조적 비해소로 제외 |
+| `resolution_entry_threshold_pct` | 0.3 | **등급용** 진입 임계값(%) — 실거래 `entry_threshold_pct`(0.5)와 분리. 얕게 재야 진입 기회가 드문 종목도 등급이 매겨짐 |
 
 ### `signals` — 시그널 규칙
 

@@ -47,7 +47,19 @@ class UniverseConfig:
     # "구조적 비해소" 종목을 워치리스트에서 제외 (강제청산 손실의 근본 원인 차단).
     resolution_lookback_days: int = 20
     resolution_min_episodes: int = 10
-    min_resolution_rate: float = 0.15
+    min_resolution_rate: float = 0.30
+    # 등급용 진입 임계값 - 실거래 signals.entry_threshold_pct(0.5)와 분리한다.
+    # 두 값은 서로 다른 제약이다: 거래 임계값은 왕복 비용을 넘겨야 한다는 경제성
+    # 제약이라 못 낮추지만, 등급은 "이 종목의 갭이 닫히는 성향인가"를 재는 측정
+    # 문제라 비용과 무관하고 낮출수록 관측이 늘어 통계가 좋아진다. 갭이 닫히는
+    # 성향은 LP 호가 운영에서 나오는 성질이라 얕은 갭에서도 드러난다.
+    # 실측(2026-08-31, 158종목 27거래일): 등급을 0.3%로 재면 등급 가능 종목x일이
+    # 43% -> 64%로 늘면서 익일 0.5% 수렴률의 단조성이 오히려 완벽해진다
+    # (0% -> 16.7% -> 33.3% -> 40.8% -> 75.8%). 0.2%까지 내리면 단조성이
+    # 깨지는데(30~50% 구간이 18.8%로 역전), 이 종목들의 스프레드가 0.07~0.15%라
+    # 0.2% 괴리는 스프레드 1~3개 폭짜리 호가 노이즈라 실제 0.5% 갭의 거동을 더
+    # 이상 대변하지 못하기 때문. 검증된 범위는 0.3~0.4%.
+    resolution_entry_threshold_pct: float = 0.3
 
 
 @dataclass(frozen=True)
@@ -167,7 +179,10 @@ def load_config(path: Path | None = None) -> Config:
                 resolution_min_episodes=int(
                     u.get("resolution_min_episodes", 10)
                 ),
-                min_resolution_rate=float(u.get("min_resolution_rate", 0.15)),
+                min_resolution_rate=float(u.get("min_resolution_rate", 0.30)),
+                resolution_entry_threshold_pct=float(
+                    u.get("resolution_entry_threshold_pct", 0.3)
+                ),
             ),
             signals=SignalsConfig(
                 entry_threshold_pct=float(s["entry_threshold_pct"]),
@@ -268,6 +283,20 @@ def _validate(cfg: Config) -> None:
         raise ConfigError("resolution_min_episodes는 1 이상이어야 합니다")
     if not (0.0 <= u.min_resolution_rate <= 1.0):
         raise ConfigError("min_resolution_rate는 0.0~1.0 범위여야 합니다")
+    # 등급 임계값은 양수여야 하고, 이상치 상한(max_entry_disparity_pct)보다
+    # 얕아야 한다 - 그보다 깊으면 에피소드 개시 구간
+    # (-max_entry_disparity < ask_disp <= -entry)이 비어 아무것도 안 잡힌다.
+    if u.resolution_entry_threshold_pct <= 0:
+        raise ConfigError(
+            "resolution_entry_threshold_pct는 0보다 커야 합니다 "
+            f"(입력값: {u.resolution_entry_threshold_pct})"
+        )
+    if u.resolution_entry_threshold_pct >= s.max_entry_disparity_pct:
+        raise ConfigError(
+            f"resolution_entry_threshold_pct({u.resolution_entry_threshold_pct})가 "
+            f"max_entry_disparity_pct({s.max_entry_disparity_pct}) 이상입니다. "
+            "에피소드 개시 구간이 비어 해소율을 잴 수 없습니다."
+        )
 
     # 호가창 유동성 기반 사이징 안전장치.
     if r.min_alloc_per_position_krw > r.max_alloc_per_position_krw:
