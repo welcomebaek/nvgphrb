@@ -100,6 +100,8 @@ ETF는 두 가지 가격을 가집니다.
 | `krx_history.py` | KRX 일별 데이터 수집/증분 캐시 |
 | `intraday_history.py` | 장중 샘플(괴리율) 세션별 파싱 |
 | `spread_history.py` | 장중 스프레드 일별 중앙값 + N일 이동평균 |
+| `resolution_history.py` | 샘플러 askp1/bidp1/nav로 ask/bid 비대칭 에피소드를 재구성해 종목별 당일 해소율 산출 + 구조적 비해소 제외 판정 (순수) |
+| `watchlist_select.py` | 워치리스트 선정 로직 (순수) — 보유종목 히스테리시스 폴백 체인, 신규 후보 게이트(해소율 → 이동평균 스프레드 → 실시간 호가)와 슬롯 채우기. `etf_watchlist_refresh.py`는 I/O만 담당 |
 | `universe.py` | 괴리 에피소드 통계, 스코어링, 기대괴리 분위수 (순수) |
 | `ws_client.py` | KIS 웹소켓(NAV `H0STNAV0` + 10단계 호가 `H0STASP0`) 클라이언트, 접속키/재접속 |
 | `market_state.py` | 종목별 실시간 스냅샷 + 호가 사다리 (순수) |
