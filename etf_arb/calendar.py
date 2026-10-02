@@ -17,12 +17,12 @@ from __future__ import annotations
 import json
 import os
 import tempfile
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 
 import httpx
 
 from etf_arb import paths
-from kis_common import KisApiError, REQUEST_TIMEOUT_SECONDS, sanitize
+from kis_common import REQUEST_TIMEOUT_SECONDS, sanitize
 
 HOLIDAY_URL_PATH = "/uapi/domestic-stock/v1/quotations/chk-holiday"
 TR_ID_CHK_HOLIDAY = "CTCA0903R"

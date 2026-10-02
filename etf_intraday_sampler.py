@@ -33,17 +33,18 @@ import json
 import signal
 import sys
 import time
-from datetime import date, datetime, time as dtime
+from datetime import date, datetime
+from datetime import time as dtime
 
 import httpx
 
+from etf_arb import paths, universe
 from etf_arb.calendar import TradingCalendar
 from etf_arb.config import load_config
 from etf_arb.krx_history import ensure_history
-from etf_arb import paths, universe
 from kis_common import (
-    KisApiError,
     REQUEST_TIMEOUT_SECONDS,
+    KisApiError,
     get_access_token,
     load_credentials,
     sanitize,

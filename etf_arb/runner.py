@@ -24,11 +24,10 @@ import signal
 import sys
 import time
 from collections import Counter
-from datetime import date, datetime, time as dtime
+from datetime import date, datetime
+from datetime import time as dtime
 from pathlib import Path
 from typing import Any, Callable
-
-from kis_common import KisApiError, get_access_token, load_credentials
 
 from etf_arb import journal, paths
 from etf_arb.calendar import CalendarError, TradingCalendar
@@ -44,6 +43,7 @@ from etf_arb.signals import (
     evaluate_exit,
 )
 from etf_arb.ws_client import KisWsClient, get_approval_key
+from kis_common import KisApiError, get_access_token, load_credentials
 
 WATCHLIST_PATH = paths.WATCHLIST_PATH
 TOKEN_CACHE_PATH = paths.TOKEN_CACHE_PATH

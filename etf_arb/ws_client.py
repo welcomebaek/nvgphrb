@@ -44,7 +44,7 @@ import httpx
 import websockets
 
 from etf_arb import paths
-from kis_common import KisApiError, REQUEST_TIMEOUT_SECONDS, sanitize
+from kis_common import REQUEST_TIMEOUT_SECONDS, KisApiError, sanitize
 
 APPROVAL_URL_PATH = "/oauth2/Approval"
 APPROVAL_REUSE_SECONDS = 23 * 3600  # official kis_auth.py re-auths at 24h

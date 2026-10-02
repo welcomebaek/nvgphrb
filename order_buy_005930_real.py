@@ -107,7 +107,13 @@ from typing import Any
 import httpx
 
 from etf_arb import paths
-from kis_common import KisApiError, REQUEST_TIMEOUT_SECONDS, get_access_token, load_credentials, sanitize
+from kis_common import (
+    REQUEST_TIMEOUT_SECONDS,
+    KisApiError,
+    get_access_token,
+    load_credentials,
+    sanitize,
+)
 
 # Shared with kis_price.py deliberately - see module docstring "Token cache".
 REAL_TOKEN_CACHE_PATH = paths.TOKEN_CACHE_PATH

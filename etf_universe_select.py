@@ -31,13 +31,13 @@ from typing import Any
 
 import httpx
 
+from etf_arb import paths, universe
 from etf_arb.calendar import CalendarError, TradingCalendar
 from etf_arb.config import ConfigError, load_config
 from etf_arb.krx_history import ensure_history
-from etf_arb import paths, universe
 from kis_common import (
-    KisApiError,
     REQUEST_TIMEOUT_SECONDS,
+    KisApiError,
     get_access_token,
     load_credentials,
     sanitize,

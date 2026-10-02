@@ -17,7 +17,8 @@ can build a skip-reason histogram (the main tuning tool).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, time as dtime
+from datetime import date, datetime
+from datetime import time as dtime
 from typing import Mapping, Union
 
 from etf_arb.config import Config

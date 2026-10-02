@@ -20,7 +20,8 @@ I/O 실패(손상/잘림)에 관대하다: 킬된 샘플러가 파일 끝을 어
 from __future__ import annotations
 
 import json
-from datetime import date, datetime, time as dtime, timedelta
+from datetime import date, datetime, timedelta
+from datetime import time as dtime
 from pathlib import Path
 from typing import Any
 
@@ -156,7 +157,7 @@ def load_resolution_stats(
     result: dict[str, tuple[int, int]] = {}
     for code, day_map in by_code_day.items():
         tot_ep = tot_res = 0
-        for day_key, rows in day_map.items():
+        for rows in day_map.values():
             rows.sort(key=lambda r: r[0])
             series = [(ad, bd) for _, ad, bd in rows]
             ep, res = _session_episodes(series, entry_neg, exit_neg, maxdisp_neg)
