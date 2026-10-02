@@ -124,6 +124,53 @@ class TickerState:
                 break
         return best
 
+    def bid_levels(self) -> list[tuple[int, int]]:
+        """Usable bid-side ladder [(price, qty), ...], best (highest) price
+        first. Mirror of ask_levels(): single bid1 fallback, stops at the
+        first hole."""
+        source = self.bid_ladder or (
+            [(self.bid1, self.bid1_qty)]
+            if self.bid1 and self.bid1_qty is not None
+            else []
+        )
+        out: list[tuple[int, int]] = []
+        for price, qty in source:
+            if not price or qty is None or price <= 0 or qty <= 0:
+                break
+            out.append((int(price), int(qty)))
+        return out
+
+    def effective_sell_fill(
+        self, target_qty: int, min_vwap: float
+    ) -> tuple[int, float, int] | None:
+        """Walk the bid ladder accumulating up to target_qty shares.
+
+        Mirror of effective_buy_fill(): deeper bid levels are priced LOWER, so
+        cumulative VWAP is non-increasing and the walk stops at the first
+        level that would drag it below min_vwap. Returns the deepest
+        level-boundary (qty_ok, cumulative_vwap, worst_price), or None when
+        there is no usable liquidity or the best level is already below
+        min_vwap."""
+        if target_qty <= 0:
+            return None
+        filled = 0
+        proceeds = 0
+        best: tuple[int, float, int] | None = None
+        for price, qty in self.bid_levels():
+            take = min(qty, target_qty - filled)
+            if take <= 0:
+                break
+            new_filled = filled + take
+            new_proceeds = proceeds + take * price
+            new_vwap = new_proceeds / new_filled
+            if new_vwap < min_vwap:
+                break  # this level erodes the exit edge past the floor; stop
+            filled, proceeds = new_filled, new_proceeds
+            best = (filled, new_vwap, price)
+            if filled >= target_qty:
+                break
+        return best
+
     def effective_buy_vwap(self, target_qty: int) -> tuple[int, float] | None:
         """(filled_qty, volume_weighted_avg_price) for filling up to
         target_qty by walking the ask ladder, ignoring any price ceiling.

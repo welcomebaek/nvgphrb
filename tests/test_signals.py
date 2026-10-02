@@ -573,6 +573,50 @@ class TestExit:
 
 # ------------------------------------------------ daily force exit (flush)
 
+class TestExitBidLadder:
+    """Normal exit walks the bid ladder like entry walks the ask ladder: the
+    limit is the deepest level whose cumulative VWAP still satisfies the exit
+    condition, i.e. vwap >= nav * (1 - exit_threshold_pct/100)."""
+
+    def test_limit_is_deepest_level_keeping_vwap_above_floor(self):
+        # nav 10,000, thr 0.1% -> floor 9,990. 100 @ 9,999 then 10 @ 9,985:
+        # cumulative (999,900 + 99,850)/110 = 9,997.7 >= 9,990 -> accept 9,985.
+        snap = make_snap(bid1=9_999, bid1_qty=100,
+                         bid_ladder=[(9_999, 100), (9_985, 10)])
+        d = evaluate_exit(make_position(qty=110), snap, make_cfg(), NOW)
+        assert isinstance(d, ExitSignal)
+        assert d.reason == "exit"
+        assert d.qty == 110
+        assert d.limit_price == 9_985
+
+    def test_level_that_breaks_floor_is_not_included(self):
+        # 50 @ 9,995 then 500 @ 9,950: taking 50 more at 9,950 gives
+        # (499,750 + 497,500)/100 = 9,972.5 < 9,990 -> stop at 9,995.
+        snap = make_snap(bid1=9_995, bid1_qty=50,
+                         bid_ladder=[(9_995, 50), (9_950, 500)])
+        d = evaluate_exit(make_position(qty=100), snap, make_cfg(), NOW)
+        assert isinstance(d, ExitSignal)
+        assert d.limit_price == 9_995
+
+    def test_no_bid_depth_falls_back_to_bid1_limit(self):
+        snap = make_snap(bid1=9_990, bid1_qty=None)
+        d = evaluate_exit(make_position(), snap, make_cfg(), NOW)
+        assert isinstance(d, ExitSignal)
+        assert d.limit_price == 9_990
+
+    def test_force_exit_limit_stays_at_bid1(self):
+        # Force exit is patient by design (bid1 limit, re-swept every 10s
+        # until the close) - it must NOT start walking the ladder down.
+        at_flush = datetime(2026, 7, 20, 14, 50, 0)
+        snap = make_snap(bid1=9_900, bid1_qty=10,
+                         bid_ladder=[(9_900, 10), (9_800, 1_000)],
+                         now_epoch=at_flush.timestamp())
+        d = evaluate_exit(make_position(), snap, make_cfg(), at_flush)
+        assert isinstance(d, ExitSignal)
+        assert d.reason == "force_exit"
+        assert d.limit_price == 9_900
+
+
 class TestDailyForceExit:
     """force_exit_daily: 기한과 무관하게 매일 force_exit_time에 전량 청산해
     오버나이트 캐리를 구조적으로 없앤다. 픽스처의 force_exit_time은 "14:50",
