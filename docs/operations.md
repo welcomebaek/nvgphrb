@@ -32,7 +32,8 @@
 
 ```bash
 uv run etf_universe_select.py         # 콜드스타트 워치리스트 생성(수동, 장중 스프레드 검사 포함)
-uv run etf_watchlist_refresh.py --dry-run   # 리프레셔 시뮬(파일 안 씀)
+uv run etf_watchlist_refresh.py --dry-run   # 리프레셔 시뮬: etf_watchlist.json은 안 쓰지만
+                                            # etf_candidates_ranked.json(샘플러 풀)은 갱신함
 uv run etf_arb_run.py                 # 러너(시뮬 매매)
 uv run etf_arb_run.py --observe-only  # 시그널만 관찰, 매매 안 함
 uv run etf_intraday_sampler.py        # 샘플러(장중에만)

@@ -59,6 +59,10 @@
 
 ## 2. 선정 방법론 (`etf_watchlist_refresh.py`, 매일 08:15)
 
+스크립트는 데이터 로드·KIS 호출·파일 쓰기만 하고, 어떤 종목이 들어갈지 정하는 로직(보유종목
+히스테리시스, 신규 후보 게이트 순서·카운터)은 순수 모듈 `etf_arb/watchlist_select.py`에 있어
+`tests/test_watchlist_select.py`로 검증됩니다.
+
 ### 하드 필터 (퍼널)
 
 `universe.apply_filters()`가 순서대로 적용:
