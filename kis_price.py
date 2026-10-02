@@ -27,7 +27,13 @@ from typing import Any
 import httpx
 
 from etf_arb import paths
-from kis_common import KisApiError, REQUEST_TIMEOUT_SECONDS, get_access_token, load_credentials, sanitize
+from kis_common import (
+    REQUEST_TIMEOUT_SECONDS,
+    KisApiError,
+    get_access_token,
+    load_credentials,
+    sanitize,
+)
 
 STOCK_CODE = "005930"
 MARKET_DIV_CODE = "J"  # KRX

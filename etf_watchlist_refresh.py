@@ -34,22 +34,21 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
-from etf_arb import paths
+from etf_arb import paths, universe
 from etf_arb.calendar import CalendarError, TradingCalendar
 from etf_arb.config import ConfigError, load_config
 from etf_arb.intraday_history import load_intraday_sessions
 from etf_arb.krx_history import ensure_history
 from etf_arb.portfolio import DEFAULT_STATE_PATH, Portfolio, PortfolioError
+from etf_arb.resolution_history import (
+    exclude_for_nonresolution,
+    load_resolution_stats,
+)
 from etf_arb.spread_history import (
     exclude_for_spread,
     load_daily_spread_medians,
     nday_ma_spread,
 )
-from etf_arb.resolution_history import (
-    exclude_for_nonresolution,
-    load_resolution_stats,
-)
-from etf_arb import universe
 from etf_intraday_sampler import SAMPLE_POOL_SIZE
 from etf_universe_select import (
     KIS_THROTTLE_SECONDS,

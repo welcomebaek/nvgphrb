@@ -69,7 +69,13 @@ from typing import Any
 import httpx
 
 from etf_arb import paths
-from kis_common import KisApiError, REQUEST_TIMEOUT_SECONDS, get_access_token, load_credentials, sanitize
+from kis_common import (
+    REQUEST_TIMEOUT_SECONDS,
+    KisApiError,
+    get_access_token,
+    load_credentials,
+    sanitize,
+)
 
 PAPER_TOKEN_CACHE_PATH = paths.PAPER_TOKEN_CACHE_PATH
 ORDER_LOG_PATH = paths.ORDER_LOG_PAPER_PATH

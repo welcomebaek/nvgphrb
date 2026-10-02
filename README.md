@@ -102,14 +102,21 @@ uv run etf_arb_report.py         # 결과 리포트
 강제청산 기한, 수수료 모델, 실행 모드 등을 한 파일에서 관리. 모든 값은
 로드 시 교차검증됩니다.
 
-## 테스트
+## 테스트 & 린트
 
 ```bash
 uv run pytest
+uv run ruff check .        # --fix로 import 정렬 등 자동 수정
 ```
 
 순수 함수(시그널 게이트, 디바운스, 사이징, 호가 사다리 VWAP, 휴장일 낀 기한
-연산, 괴리 분위수 등)를 중심으로 커버.
+연산, 괴리 분위수 등)를 중심으로 커버. 네트워크·`.env`·월클럭 없이 돈다.
+
+**CI**: `.github/workflows/ci.yml`이 `main` 푸시와 모든 PR에서 `ruff check` +
+`pytest`를 실행한다. 린트 규칙은 `pyproject.toml`의 `[tool.ruff.lint]`에서
+정확성 위주로 명시 선택(E4/E7/E9/F/B/I) — ruff 기본셋의 DTZ(naive datetime)는
+KST 로컬시각 설계와 충돌해 의도적으로 제외했다. 포매터(`ruff format`)는 전체
+재포맷 diff를 피하려고 강제하지 않는다.
 
 ## 데이터/생성 파일
 

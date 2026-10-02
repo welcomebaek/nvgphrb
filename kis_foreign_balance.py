@@ -41,7 +41,13 @@ from typing import Any
 import httpx
 
 from etf_arb import paths
-from kis_common import KisApiError, REQUEST_TIMEOUT_SECONDS, get_access_token, load_credentials, sanitize
+from kis_common import (
+    REQUEST_TIMEOUT_SECONDS,
+    KisApiError,
+    get_access_token,
+    load_credentials,
+    sanitize,
+)
 
 FOREIGN_MARGIN_URL_PATH = "/uapi/overseas-stock/v1/trading/foreign-margin"
 TR_ID_FOREIGN_MARGIN = "TTTC2101R"
