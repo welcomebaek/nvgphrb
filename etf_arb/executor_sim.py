@@ -6,9 +6,17 @@ Fill model:
         above limit_price; realized price is the volume-weighted average. When
         no multi-level ladder is present it falls back to the single ask1
         level (the old ask1-only behavior). filled_qty may be < requested.
-  sell: fills at bid1, filled_qty = min(requested, bid1_qty, position qty).
-        (A symmetric bid-ladder sell-side effective-disparity check is a
-        possible future extension; intentionally not implemented here.)
+  sell: mirror of buy - walks the bid ladder from the best (highest) level
+        down, rejecting any level priced below limit_price; realized price is
+        the VWAP and proceeds are the exact multi-level notional. Falls back
+        to the single bid1 level when no ladder is present.
+        Depth taken from a quote frame stays taken: exits are re-evaluated on
+        every NAV tick too, which does NOT bring a new order book, so without
+        this the sim would sell the same displayed bid depth over and over
+        (2026-07-22 `291630`: 1 share at the same bid, ~1/second, 291 legs).
+        A new quote frame (different quote_ts) restores the displayed depth -
+        the exchange book never reflects our phantom fills, so that much
+        refill is unavoidable in a sim.
 Partial fills are allowed; the unsold remainder simply stays in the position.
 Commission is charged on both sides, floored to whole won. A buy is
 additionally capped so that qty*price + commission never exceeds cash.
@@ -54,6 +62,8 @@ class SimExecutor:
         self._deadline_fn = deadline_fn
         self.trades_path = Path(trades_path)
         self._now_fn = now_fn
+        # code -> (quote_ts of the frame, {price: shares already sold into it})
+        self._bid_taken: dict[str, tuple[float | None, dict[int, int]]] = {}
 
     # -- public API (matches executor.Executor) -----------------------------
 
@@ -76,14 +86,11 @@ class SimExecutor:
 
     # -- internals ----------------------------------------------------------
 
-    def _commission(self, qty: int, price: int) -> int:
+    def _commission_cost(self, cost: int) -> int:
+        """Commission on a notional `cost` (won) - the sum of qty_i*price_i
+        over every ladder level of a fill, on either side."""
         # +1e-6 absorbs binary-float error so an exact boundary like
         # 2,000,000 * 0.00015 = 300.0 never floors to 299.
-        return int(math.floor(qty * price * self._rate + 1e-6))
-
-    def _commission_cost(self, cost: int) -> int:
-        """Commission on a notional `cost` (won). Used for multi-level buys
-        where notional is the sum of qty_i*price_i, not qty*price."""
         return int(math.floor(cost * self._rate + 1e-6))
 
     def _buy(
@@ -202,20 +209,45 @@ class SimExecutor:
         pos = self.portfolio.positions.get(code)
         if pos is None:
             return None
-        if not snapshot.bid1 or snapshot.bid1_qty is None:
-            return None
-        price = int(snapshot.bid1)
-        if price < limit_price:  # book moved below our limit -> no fill
+
+        frame_ts, taken = self._bid_taken.get(code, (None, {}))
+        if frame_ts != snapshot.quote_ts:
+            taken = {}  # a new quote frame -> the displayed depth is fresh
+
+        # Walk the bid ladder best-first, never below limit_price, net of the
+        # depth this frame has already given us.
+        want = min(qty, pos.qty)
+        segs: list[tuple[int, int]] = []  # (price, shares) actually sold
+        filled = 0
+        for price, lvl_qty in snapshot.bid_levels():
+            if price < limit_price:
+                break  # this and all deeper levels are below our limit
+            take = min(lvl_qty - taken.get(price, 0), want - filled)
+            if take <= 0:
+                if filled >= want:
+                    break
+                continue  # level exhausted by earlier fills on this frame
+            segs.append((price, take))
+            filled += take
+            if filled >= want:
+                break
+        if filled <= 0:
             return None
 
-        fill_qty = min(qty, snapshot.bid1_qty, pos.qty)
-        if fill_qty <= 0:
-            return None
+        notional = sum(p * n for p, n in segs)
+        vwap = notional / filled
+        fill_price = round(vwap)
+        worst_price = segs[-1][0]
+        commission = self._commission_cost(notional)
+
+        for p, n in segs:
+            taken[p] = taken.get(p, 0) + n
+        self._bid_taken[code] = (snapshot.quote_ts, taken)
 
         ts = self._now_fn()
-        commission = self._commission(fill_qty, price)
         realized = self.portfolio.apply_sell(
-            code=code, qty=fill_qty, price=price, commission=commission, ts=ts
+            code=code, qty=filled, price=fill_price, commission=commission,
+            ts=ts, notional=notional,
         )
         self.portfolio.save()
 
@@ -223,16 +255,22 @@ class SimExecutor:
             ts=ts,
             code=code,
             side="sell",
-            qty=fill_qty,
-            price=price,
+            qty=filled,
+            price=fill_price,
             commission=commission,
             nav_at_fill=snapshot.nav,
             disparity_at_fill=snapshot.exit_disparity_pct(),
             reason=reason,
-            extra={"realized_pnl": realized, "qty_requested": qty},
+            extra={
+                "realized_pnl": realized,
+                "qty_requested": qty,
+                "realized_vwap": round(vwap, 4),
+                "worst_price": worst_price,
+                "levels_used": len(segs),
+            },
         )
         return Fill(
-            side="sell", code=code, qty=fill_qty, price=price,
+            side="sell", code=code, qty=filled, price=fill_price,
             commission=commission, ts=ts,
         )
 

@@ -36,6 +36,7 @@ def make_snap(
     bid1_qty: int = 1_000,
     ask_ladder: list[tuple[int, int]] | None = None,
     bid_ladder: list[tuple[int, int]] | None = None,
+    quote_ts: float = NOW_EPOCH - 1.0,
 ) -> TickerState:
     return TickerState(
         code=code,
@@ -45,7 +46,7 @@ def make_snap(
         ask1_qty=ask1_qty,
         bid1=bid1,
         bid1_qty=bid1_qty,
-        quote_ts=NOW_EPOCH - 1.0,
+        quote_ts=quote_ts,
         hour_cls_code="0",
         ask_ladder=ask_ladder or [],
         bid_ladder=bid_ladder or [],
@@ -369,6 +370,70 @@ class TestSimExecutor:
         assert fill.qty == 100
         assert fill.price == 9_900
         assert p.cash >= 0
+
+    def test_sell_walks_bid_ladder_down_to_limit(self, tmp_path):
+        # 40@9990 + 30@9985 accepted; 9980 is below the 9985 limit.
+        p = make_portfolio(tmp_path)
+        ex = make_executor(tmp_path, p)
+        ex.place_order("buy", "233740", 100, 9_940, make_snap(), reason="entry")
+        cash_before = p.cash
+        snap = make_snap(bid_ladder=[(9_990, 40), (9_985, 30), (9_980, 1_000)])
+        fill = ex.place_order("sell", "233740", 100, 9_985, snap, reason="exit")
+        assert fill is not None
+        assert fill.qty == 70
+        notional = 40 * 9_990 + 30 * 9_985
+        assert fill.price == round(notional / 70)
+        assert fill.commission == int(notional * 0.00015 + 1e-6)
+        # proceeds use the exact multi-level notional, not qty*rounded_price
+        assert p.cash == cash_before + notional - fill.commission
+        assert isinstance(p.cash, int)
+        assert p.positions["233740"].qty == 30
+
+        t = read_trades(tmp_path)[-1]
+        assert t["realized_vwap"] == pytest.approx(round(notional / 70, 4))
+        assert t["worst_price"] == 9_985
+        assert t["levels_used"] == 2
+
+    def test_sell_cannot_resell_same_quote_frame_depth(self, tmp_path):
+        # NAV ticks re-evaluate exits without a new quote frame. Bid depth
+        # already taken from THIS frame must not be sold into again.
+        p = make_portfolio(tmp_path)
+        ex = make_executor(tmp_path, p)
+        ex.place_order("buy", "233740", 100, 9_940, make_snap(), reason="entry")
+        frame = make_snap(bid1_qty=40)
+        first = ex.place_order("sell", "233740", 30, 9_990, frame, reason="exit")
+        second = ex.place_order("sell", "233740", 30, 9_990, frame, reason="exit")
+        third = ex.place_order("sell", "233740", 30, 9_990, frame, reason="exit")
+        assert first is not None and first.qty == 30
+        assert second is not None and second.qty == 10  # only 10 left at 9990
+        assert third is None                             # frame exhausted
+        assert p.positions["233740"].qty == 60
+
+    def test_new_quote_frame_restores_depth(self, tmp_path):
+        p = make_portfolio(tmp_path)
+        ex = make_executor(tmp_path, p)
+        ex.place_order("buy", "233740", 100, 9_940, make_snap(), reason="entry")
+        ex.place_order("sell", "233740", 100, 9_990,
+                       make_snap(bid1_qty=40, quote_ts=NOW_EPOCH - 2.0),
+                       reason="exit")
+        fill = ex.place_order("sell", "233740", 100, 9_990,
+                              make_snap(bid1_qty=40, quote_ts=NOW_EPOCH - 1.0),
+                              reason="exit")
+        assert fill is not None and fill.qty == 40
+        assert p.positions["233740"].qty == 20
+
+    def test_frame_consumption_is_per_code(self, tmp_path):
+        p = make_portfolio(tmp_path)
+        ex = make_executor(tmp_path, p)
+        ex.place_order("buy", "233740", 50, 9_940, make_snap(), reason="entry")
+        ex.place_order("buy", "488080", 50, 9_940, make_snap(code="488080"),
+                       reason="entry")
+        a = ex.place_order("sell", "233740", 50, 9_990,
+                           make_snap(bid1_qty=50), reason="exit")
+        b = ex.place_order("sell", "488080", 50, 9_990,
+                           make_snap(code="488080", bid1_qty=50), reason="exit")
+        assert a is not None and a.qty == 50
+        assert b is not None and b.qty == 50
 
     def test_round_trip_updates_entry_counter_and_persists(self, tmp_path):
         p = make_portfolio(tmp_path)

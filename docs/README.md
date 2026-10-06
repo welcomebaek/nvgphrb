@@ -106,7 +106,7 @@ ETF는 두 가지 가격을 가집니다.
 | `signals.py` | 시그널 엔진(진입/청산/강제청산, 깊이비례 사이징, 실효괴리 더블체크) — 순수, I/O 없음 |
 | `paths.py` | **런타임 데이터 경로 단일 소스** — 로그/상태/캐시/생성물을 소스 트리 밖 `DATA_ROOT`로 분리(디렉토리 꼬임 사고 방지) |
 | `portfolio.py` | 가상 포트폴리오 영속화 (`$DATA_ROOT/state/portfolio_sim.json`, 원자적 저장) |
-| `executor.py` / `executor_sim.py` | 실행기 인터페이스 + 시뮬 체결(호가 사다리 VWAP) |
+| `executor.py` / `executor_sim.py` | 실행기 인터페이스 + 시뮬 체결(매수·매도 양측 호가 사다리 VWAP, 호가 프레임별 잔량 소진 추적) |
 | `journal.py` | JSONL 이벤트 저널 |
 | `runner.py` | 오케스트레이터 (기동 시퀀스, asyncio 루프, 종료) |
 

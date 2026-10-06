@@ -214,11 +214,21 @@ class Portfolio:
         return pos
 
     def apply_sell(
-        self, code: str, qty: int, price: int, commission: int, ts: float
+        self,
+        code: str,
+        qty: int,
+        price: int,
+        commission: int,
+        ts: float,
+        notional: int | None = None,
     ) -> int:
         """Apply a (possibly partial) sell fill. Returns realized P&L (won)
         for this fill, with the buy commission allocated proportionally so
-        that a full liquidation accounts for every won of commission."""
+        that a full liquidation accounts for every won of commission.
+
+        `notional` is the exact gross proceeds of a multi-level fill
+        (sum of qty_i * price_i); when omitted it is qty * price. Passing it
+        keeps cash an exact integer even though the multi-level VWAP isn't."""
         pos = self.positions.get(code)
         if pos is None:
             raise PortfolioError(f"보유하지 않은 종목 매도: {code}")
@@ -232,7 +242,8 @@ class Portfolio:
         else:
             buy_comm_alloc = pos.buy_commission * qty // pos.qty
 
-        proceeds = qty * price - commission
+        gross = notional if notional is not None else qty * price
+        proceeds = gross - commission
         realized = proceeds - round(qty * pos.avg_price) - buy_comm_alloc
 
         self.cash += proceeds

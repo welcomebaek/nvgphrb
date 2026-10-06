@@ -19,13 +19,19 @@ def mk(
     ask1: int | None = None,
     ask1_qty: int | None = None,
     nav: float | None = 10_000.0,
+    bid_ladder: list[tuple[int, int]] | None = None,
+    bid1: int | None = None,
+    bid1_qty: int | None = None,
 ) -> TickerState:
     return TickerState(
         code="X",
         nav=nav,
         ask1=ask1,
         ask1_qty=ask1_qty,
+        bid1=bid1,
+        bid1_qty=bid1_qty,
         ask_ladder=ask_ladder or [],
+        bid_ladder=bid_ladder or [],
     )
 
 
@@ -113,6 +119,67 @@ class TestEffectiveBuyFill:
     def test_fallback_single_level(self):
         assert mk(ask1=100, ask1_qty=40).effective_buy_fill(30, 1e9) == (
             30, 100.0, 100
+        )
+
+
+class TestBidLevels:
+    def test_uses_ladder_when_present(self):
+        st = mk(bid_ladder=[(99, 10), (98, 20)])
+        assert st.bid_levels() == [(99, 10), (98, 20)]
+
+    def test_falls_back_to_bid1_when_ladder_empty(self):
+        assert mk(bid1=99, bid1_qty=40).bid_levels() == [(99, 40)]
+
+    def test_empty_when_no_liquidity(self):
+        assert mk().bid_levels() == []
+        assert mk(bid1=99).bid_levels() == []  # qty missing
+
+    def test_stops_at_first_hole(self):
+        assert mk(bid_ladder=[(99, 10), (98, 0), (97, 10)]).bid_levels() == [
+            (99, 10)
+        ]
+
+
+class TestEffectiveSellFill:
+    """Mirror of effective_buy_fill on the bid side: deeper bid levels are
+    priced LOWER, so cumulative VWAP is non-increasing and the walk stops once
+    a level drags it below min_vwap."""
+
+    def test_stops_when_vwap_falls_below_floor(self):
+        # level2 would drag VWAP to (2000+1000)/20 = 150 < 151 -> stop at 10
+        st = mk(bid_ladder=[(200, 10), (100, 10)])
+        assert st.effective_sell_fill(20, 151.0) == (10, 200.0, 200)
+
+    def test_boundary_equality_accepted(self):
+        st = mk(bid_ladder=[(200, 10), (100, 10)])
+        assert st.effective_sell_fill(20, 150.0) == (20, 150.0, 100)
+
+    def test_vwap_based_not_level_based(self):
+        # level2 price 98 is itself below the floor 99.5, but the cumulative
+        # VWAP (100*100 + 98*10)/110 = 99.82 still clears it -> accepted.
+        st = mk(bid_ladder=[(100, 100), (98, 10)])
+        filled, vwap, worst = st.effective_sell_fill(110, 99.5)
+        assert filled == 110
+        assert vwap == pytest.approx(10_980 / 110)
+        assert worst == 98
+
+    def test_target_cap_on_final_level(self):
+        st = mk(bid_ladder=[(100, 10), (99, 10)])
+        filled, vwap, worst = st.effective_sell_fill(15, 0.0)
+        assert filled == 15
+        assert vwap == pytest.approx((1000 + 495) / 15)
+        assert worst == 99
+
+    def test_none_when_best_level_below_floor(self):
+        assert mk(bid_ladder=[(99, 10)]).effective_sell_fill(5, 99.5) is None
+
+    def test_none_when_no_liquidity_or_target(self):
+        assert mk().effective_sell_fill(10, 0.0) is None
+        assert mk(bid_ladder=[(99, 10)]).effective_sell_fill(0, 0.0) is None
+
+    def test_fallback_single_level(self):
+        assert mk(bid1=99, bid1_qty=40).effective_sell_fill(30, 0.0) == (
+            30, 99.0, 99
         )
 
 

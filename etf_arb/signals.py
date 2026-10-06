@@ -331,10 +331,18 @@ def evaluate_exit(
         return NoAction("exit_no_disparity")
     if disp < -s.exit_threshold_pct:
         return NoAction("exit_disparity_below")
+    # Symmetric to the entry ask-ladder walk: sell as deep into the bid
+    # ladder as the CUMULATIVE VWAP still satisfies the exit condition,
+    # (vwap-nav)/nav*100 >= -theta  <=>  vwap >= nav*(1 - theta/100). bid1
+    # alone already clears it (checked above), so a None here only means no
+    # usable depth - keep bid1 as the limit and let the executor decide.
+    min_vwap = snapshot.nav * (1.0 - s.exit_threshold_pct / 100.0)
+    fill = snapshot.effective_sell_fill(position.qty, min_vwap)
+    limit_price = fill[2] if fill is not None else int(snapshot.bid1)
     return ExitSignal(
         code=position.code,
         qty=position.qty,
-        limit_price=int(snapshot.bid1),
+        limit_price=limit_price,
         reason="exit",
         disparity_pct=disp,
     )
